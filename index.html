@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Auto EQ</title>
+    <style>
+      :root {
+        --bg: #f6f7f9;
+        --panel: #ffffff;
+        --line: #e3e6eb;
+        --text: #1d222b;
+        --muted: #6a7280;
+        --accent: #0e9f6e;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #14171c;
+          --panel: #1b1f26;
+          --line: #2c3038;
+          --text: #e6e9ef;
+          --muted: #8b93a1;
+          --accent: #5ad1a5;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
+      h1 { font-size: 20px; margin: 0 0 4px; }
+      .sub { color: var(--muted); margin: 0 0 20px; }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      .row { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+      audio { width: 100%; margin-top: 12px; }
+      canvas { width: 100%; display: block; }
+      #spectrum { height: 280px; }
+      #correction { height: 140px; margin-top: 8px; }
+      .legend { display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 13px; margin-top: 8px; }
+      .legend i { display: inline-block; width: 18px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 6px; }
+      .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+      label { display: block; font-size: 13px; color: var(--muted); }
+      label output { color: var(--text); float: right; font-variant-numeric: tabular-nums; }
+      input[type="range"] { width: 100%; accent-color: var(--accent); }
+      button, input[type="file"]::file-selector-button {
+        font: inherit;
+        padding: 6px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--text);
+        cursor: pointer;
+      }
+      #status { color: var(--muted); font-size: 13px; }
+      .bypass { display: flex; gap: 8px; align-items: center; color: var(--text); font-size: 15px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Auto EQ</h1>
+      <p class="sub">재생 중인 소리를 계속 분석해 목표 곡선에 맞게 EQ를 자동으로 움직입니다.</p>
+
+      <section class="panel">
+        <div class="row">
+          <input id="file" type="file" accept="audio/*" />
+          <label class="bypass"><input id="bypass" type="checkbox" /> 보정 끄기 (원본과 비교)</label>
+          <button id="reset" type="button">학습 초기화</button>
+          <span id="status">파일을 선택해 재생하세요.</span>
+        </div>
+        <audio id="player" controls></audio>
+      </section>
+
+      <section class="panel">
+        <canvas id="spectrum"></canvas>
+        <canvas id="correction"></canvas>
+        <div class="legend">
+          <span><i style="border-color: #6b7380; border-top-style: dashed"></i>목표 곡선</span>
+          <span><i style="border-color: #c7ccd6"></i>입력(음량 정렬)</span>
+          <span><i style="border-color: #5ad1a5"></i>보정 후 예상</span>
+        </div>
+      </section>
+
+      <section class="panel controls">
+        <label>보정 강도 <output id="amount-out"></output>
+          <input id="amount" type="range" min="0" max="100" step="1" value="100" />
+        </label>
+        <label>목표 기울기 (옥타브당) <output id="slope-out"></output>
+          <input id="slope" type="range" min="-6" max="0" step="0.1" value="-3" />
+        </label>
+        <label>최대 보정량 <output id="max-out"></output>
+          <input id="max" type="range" min="1" max="12" step="0.5" value="6" />
+        </label>
+        <label>평균 시간 <output id="avg-out"></output>
+          <input id="avg" type="range" min="0.5" max="15" step="0.5" value="4" />
+        </label>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
