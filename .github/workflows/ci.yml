@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: pnpm test
+      - run: pnpm run build
+
+  vst:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux 의존성
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libfreetype-dev libfontconfig1-dev libx11-dev libxcomposite-dev \
+            libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libgl1-mesa-dev libcurl4-openssl-dev
+      - name: 구성
+        run: cmake -S vst -B vst/build -DCMAKE_BUILD_TYPE=Release
+      - name: 빌드
+        run: cmake --build vst/build --config Release --parallel 4
+      - name: DSP 기준값 테스트
+        run: ctest --test-dir vst/build -C Release --output-on-failure
+      - name: VST3 올리기
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutoEQ-vst3-${{ runner.os }}
+          path: vst/build/AutoEQ_artefacts/Release/VST3/
