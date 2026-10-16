@@ -1,108 +1,246 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Auto EQ</title>
     <style>
       :root {
-        --bg: #f6f7f9;
-        --panel: #ffffff;
-        --line: #e3e6eb;
-        --text: #1d222b;
-        --muted: #6a7280;
-        --accent: #0e9f6e;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bg: #14171c;
-          --panel: #1b1f26;
-          --line: #2c3038;
-          --text: #e6e9ef;
-          --muted: #8b93a1;
-          --accent: #5ad1a5;
-        }
+        color-scheme: dark;
+        --bg: #0c0f14;
+        --plugin: #11151b;
+        --raised: #171c24;
+        --line: #232a34;
+        --line2: #323b48;
+        --text: #e4e8ee;
+        --muted: #7f8a99;
+        --accent: #3ddc97;
+        --c-input: #e4e8ee;
+        --c-target: #6b7686;
+        --c-result: #3ddc97;
+        --c-boost: #3ddc97;
+        --c-cut: #ff9a5c;
+        --c-analyzer: #5b86ff;
+        --c-auto: #6aa8ff;
+        --c-dyn: #a08cff;
       }
       * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        background: var(--bg);
-        color: var(--text);
-        font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
-      }
-      main { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
-      h1 { font-size: 20px; margin: 0 0 4px; }
-      .sub { color: var(--muted); margin: 0 0 20px; }
-      .panel {
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 10px;
-        padding: 16px;
-        margin-bottom: 16px;
-      }
-      .row { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
-      audio { width: 100%; margin-top: 12px; }
-      canvas { width: 100%; display: block; }
-      #spectrum { height: 280px; }
-      #correction { height: 140px; margin-top: 8px; }
-      .legend { display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 13px; margin-top: 8px; }
-      .legend i { display: inline-block; width: 18px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 6px; }
-      .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
-      label { display: block; font-size: 13px; color: var(--muted); }
-      label output { color: var(--text); float: right; font-variant-numeric: tabular-nums; }
-      input[type="range"] { width: 100%; accent-color: var(--accent); }
-      button, input[type="file"]::file-selector-button {
-        font: inherit;
-        padding: 6px 12px;
-        border-radius: 6px;
-        border: 1px solid var(--line);
-        background: var(--panel);
-        color: var(--text);
-        cursor: pointer;
-      }
-      #status { color: var(--muted); font-size: 13px; }
-      .bypass { display: flex; gap: 8px; align-items: center; color: var(--text); font-size: 15px; }
+      body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", "Noto Sans KR", sans-serif; -webkit-font-smoothing: antialiased; }
+      main { max-width: 980px; margin: 0 auto; padding: 16px 16px 28px; }
+      button, select, input { font: inherit; color: inherit; }
+      button { cursor: pointer; }
+      button:disabled { opacity: 0.45; cursor: default; }
+      .hint { color: var(--muted); font-size: 11px; }
+
+      /* ---- 버튼과 입력: 평평하고 얇은 선만 쓴다 ---- */
+      .btn, .host button { height: 26px; padding: 0 10px; border: 1px solid var(--line2); border-radius: 6px; background: transparent; font-size: 12px; }
+      .btn:hover, .host button:hover { border-color: var(--muted); }
+      input[type="file"] { font-size: 12px; color: var(--muted); max-width: 220px; }
+      input[type="file"]::file-selector-button { height: 26px; padding: 0 10px; margin-right: 8px; border: 1px solid var(--line2); border-radius: 6px; background: transparent; color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
+      select { height: 26px; padding: 0 22px 0 8px; border: 1px solid var(--line2); border-radius: 6px; background: var(--plugin); font-size: 12px; }
+      select:hover { border-color: var(--muted); }
+      option:disabled { color: var(--muted); }
+
+      /* ---- 호스트(DAW) 흉내: 파일 열기와 재생. 실제 플러그인에서는 호스트가 맡는 부분이다. ---- */
+      .host { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; color: var(--muted); font-size: 11px; }
+      .host .tag { text-transform: uppercase; letter-spacing: 0.1em; font-size: 10px; }
+      .host input[type="range"] { flex: 1; min-width: 120px; height: 3px; accent-color: var(--accent); }
+      #play { width: 32px; padding: 0; }
+      #time { font-variant-numeric: tabular-nums; min-width: 80px; text-align: right; }
+
+      /* ---- 플러그인 창 ---- */
+      .plugin { background: var(--plugin); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+      .titlebar { display: flex; align-items: center; gap: 12px; height: 34px; padding: 0 14px; border-bottom: 1px solid var(--line); }
+      .logo { font-weight: 700; letter-spacing: 0.14em; font-size: 12px; }
+      .logo b { color: var(--accent); font-weight: 700; }
+      .titlebar .spacer, .spacer { flex: 1; }
+      .sw { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font-size: 10.5px; letter-spacing: 0.08em; color: var(--muted); user-select: none; }
+      .sw input { appearance: none; -webkit-appearance: none; width: 28px; height: 16px; border-radius: 8px; background: var(--line2); position: relative; margin: 0; cursor: pointer; }
+      .sw input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--muted); }
+      .sw input:checked { background: var(--c-cut); }
+      .sw input:checked::after { transform: translateX(12px); background: var(--bg); }
+      .sw input:checked ~ span { color: var(--text); }
+
+      .eqwrap { position: relative; background: #0e1217; border-bottom: 1px solid var(--line); }
+      #eq { width: 100%; height: 340px; display: block; cursor: crosshair; touch-action: none; }
+
+      /* ---- 밴드 영역 ---- */
+      .bands { padding: 8px 14px 12px; border-bottom: 1px solid var(--line); }
+      .stripbar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+      .strip { display: flex; gap: 4px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; align-items: center; }
+      .strip::-webkit-scrollbar { display: none; }
+      .stripactions { display: flex; align-items: center; gap: 6px; flex: none; }
+      .tab { --bc: var(--accent); display: flex; align-items: center; gap: 6px; flex: none; width: 108px; height: 24px; padding: 0 8px 0 3px; border: 1px solid var(--line); border-radius: 12px; background: transparent; font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; overflow: hidden; }
+      .tab:hover { border-color: var(--line2); }
+      .tab .badge { width: 18px; height: 18px; font-size: 10px; background: var(--bc); }
+      .tab > span:nth-child(2) { flex: 1; text-align: right; }
+      .tab small { min-width: 34px; text-align: right; font-size: 10.5px; color: var(--muted); }
+      .tab.on { border-color: var(--accent); }
+      .tab.off { opacity: 0.45; --bc: var(--c-target); }
+      .tab.auto { --bc: var(--c-auto); }
+      .tab.add { width: 24px; padding: 0; justify-content: center; font-size: 15px; color: var(--muted); }
+      .clear { height: 24px; padding: 0 8px; border: 0; background: transparent; color: var(--muted); font-size: 11px; }
+      .clear:hover { color: var(--text); }
+      .clear[hidden] { display: none; }
+      .bar { padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); min-height: 110px; display: flex; align-items: center; }
+      .bar .empty { flex: 1; text-align: center; color: var(--muted); font-size: 12px; }
+
+      /* 밴드 편집 컨트롤(아래 막대와 그래프 위 작은 창이 함께 쓴다) */
+      .bandview { --bc: var(--accent); display: flex; align-items: center; gap: 20px; width: 100%; }
+      .bandview.auto, .bandview.learned { --bc: var(--c-auto); }
+      .bandview.disabled { --bc: var(--c-target); }
+      .bandview.disabled .knobs, .bandview.disabled .dyngroup, .bandview.disabled .type { opacity: 0.4; }
+      .bandview .row { display: flex; align-items: center; gap: 8px; }
+      .idcol { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 150px; }
+      .bandview .knobs { display: flex; align-items: flex-start; gap: 10px; padding-left: 20px; border-left: 1px solid var(--line); }
+      .bandview .head { display: flex; align-items: center; gap: 6px; }
+      /* 다이나믹은 따로 묶은 영역: 제목이 달린 테두리 상자 안에서 한 단계 작은 노브를 쓴다 */
+      .dyngroup { position: relative; display: flex; align-items: center; gap: 16px; margin-left: auto; padding: 14px 14px 6px; border: 1px solid color-mix(in srgb, var(--c-dyn) 40%, var(--line)); border-radius: 8px; }
+      .dyngroup[hidden] { display: none; }
+      .dyn-title { position: absolute; top: -6px; left: 10px; padding: 0 5px; background: var(--raised); font-size: 9px; font-weight: 700; letter-spacing: 0.14em; color: var(--c-dyn); }
+      .dynknobs { display: flex; align-items: flex-start; gap: 4px; }
+      .dyngroup .knob { --bc: var(--c-dyn); }
+      .modecol { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding-bottom: 14px; }
+      .levelread { font-size: 10.5px; color: var(--c-dyn); font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .badge { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: var(--bc); color: var(--bg); font-weight: 700; font-size: 11px; flex: none; }
+      .autotag { display: none; font-size: 9px; letter-spacing: 0.08em; padding: 1px 5px; border-radius: 3px; border: 1px solid var(--c-auto); color: var(--c-auto); flex: none; }
+      .bandview.auto .autotag, .bandview.learned .autotag { display: inline-block; }
+      .type { min-width: 96px; }
+      .dynbtn { height: 22px; padding: 0 9px; border: 1px solid var(--line2); border-radius: 11px; background: transparent; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; flex: none; }
+      .dynbtn[hidden] { display: none; }
+      .dynbtn.on { background: var(--c-dyn); border-color: var(--c-dyn); color: var(--bg); }
+      .power { width: 28px; height: 16px; padding: 0; border: 0; border-radius: 8px; background: var(--line2); position: relative; flex: none; }
+      .power::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--muted); }
+      .power.on { background: var(--bc); }
+      .power.on::after { transform: translateX(12px); background: var(--bg); }
+      .del { width: 22px; height: 22px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; flex: none; }
+      .del:hover { color: var(--c-cut); }
+      .segmented { display: inline-flex; border: 1px solid var(--line2); border-radius: 6px; overflow: hidden; flex: none; }
+      .segmented button { height: 22px; padding: 0 9px; border: 0; background: transparent; color: var(--muted); font-size: 10.5px; }
+      .segmented button + button { border-left: 1px solid var(--line2); }
+      .segmented button.on { background: var(--c-dyn); color: var(--bg); }
+
+      /* 노브: 둘레 눈금, 굵은 값 호와 끝점, 안쪽 원 가운데의 값. 크기로 위계를 나눈다(lg 메인 / md 보조 / sm 부가). */
+      .knob { --bc: var(--accent); display: flex; flex-direction: column; align-items: center; gap: 3px; user-select: none; }
+      .knob.na { display: none; }
+      .k-lg { --ks: 72px; }
+      .k-md { --ks: 50px; }
+      .k-sm { --ks: 42px; }
+      .k-face { position: relative; width: var(--ks); height: var(--ks); }
+      .k-face svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; cursor: ns-resize; touch-action: none; outline: none; }
+      .k-face input { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: calc(var(--ks) * 0.56); padding: 0; border: 0; background: transparent; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; outline: none; pointer-events: none; }
+      .k-lg .k-face input { font-size: 13px; }
+      .k-md .k-face input { font-size: 10.5px; }
+      .k-sm .k-face input { font-size: 10px; }
+      .k-md .k-ticks, .k-sm .k-ticks { display: none; }
+      .k-md .k-face input, .k-sm .k-face input { width: calc(var(--ks) * 0.82); }
+      .k-tick { stroke: var(--line2); stroke-width: 1.2; }
+      .k-tick.major { stroke: var(--muted); }
+      .k-track { fill: none; stroke: #232a35; stroke-width: 4.4; stroke-linecap: round; }
+      .k-value { fill: none; stroke: var(--bc); stroke-width: 4.4; stroke-linecap: round; }
+      .k-body { fill: #1d232d; stroke: #2e3643; stroke-width: 1; }
+      .k-dot { fill: var(--text); }
+      .knob:hover .k-body, .knob.dragging .k-body, .k-face svg:focus-visible .k-body { stroke: var(--muted); }
+      .k-face:focus-within .k-body { stroke: var(--bc); }
+      .k-label { font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+      .k-lg .k-label { font-size: 10px; color: var(--text); opacity: 0.85; }
+
+      /* 그래프 위 작은 편집창: 노브를 한 단계씩 줄이고 세로로 쌓는다 */
+      .pop { position: absolute; z-index: 5; padding: 8px 10px 6px; border: 1px solid var(--line2); border-radius: 8px; background: var(--raised); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5); }
+      .pop[hidden] { display: none; }
+      .bandview.popview { flex-direction: column; align-items: stretch; gap: 6px; width: 226px; }
+      .bandview.popview .head { gap: 6px; }
+      .bandview.popview .type { flex: 1; min-width: 0; padding-right: 18px; }
+      .bandview.popview .autotag { display: none; }
+      .bandview.popview .knobs { padding-left: 0; border-left: 0; justify-content: space-between; gap: 4px; }
+      .bandview.popview .dyngroup { margin-left: 0; padding: 12px 8px 4px; gap: 8px; justify-content: space-between; }
+      .bandview.popview .dynknobs { gap: 8px; }
+      .bandview.popview .adv, .bandview.popview .dyn-title { display: none; }
+      .bandview.popview .dyngroup { padding-top: 6px; }
+      .bandview.popview .modecol { align-items: flex-end; padding-bottom: 12px; }
+
+      /* ---- 학습(LEARN) 줄 ---- */
+      .learnrow { display: flex; align-items: center; gap: 20px; padding: 8px 14px; flex-wrap: wrap; }
+      .learnbtn { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 14px; border: 1px solid var(--line2); border-radius: 15px; background: transparent; font-weight: 700; letter-spacing: 0.08em; font-size: 11px; }
+      .learnbtn i { width: 8px; height: 8px; border-radius: 50%; background: var(--c-cut); }
+      .learnbtn.on { border-color: var(--c-auto); color: var(--c-auto); }
+      .learnbtn.on i { border-radius: 2px; background: var(--c-auto); animation: pulse 1s steps(2, jump-none) infinite; }
+      @keyframes pulse { 50% { opacity: 0.25; } }
+      .learninfo { width: 96px; font-variant-numeric: tabular-nums; }
+      .learnknobs { display: flex; align-items: flex-end; gap: 14px; }
+      .drawer { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; padding: 10px 14px 12px; border-top: 1px solid var(--line); }
+      .drawer[hidden] { display: none; }
+      .drawer .sep { width: 1px; align-self: stretch; background: var(--line); }
+      .foot { display: flex; justify-content: space-between; gap: 12px; padding: 6px 14px; border-top: 1px solid var(--line); font-size: 10.5px; color: var(--muted); flex-wrap: wrap; }
     </style>
   </head>
   <body>
     <main>
-      <h1>Auto EQ</h1>
-      <p class="sub">재생 중인 소리를 계속 분석해 목표 곡선에 맞게 EQ를 자동으로 움직입니다.</p>
+      <div class="host">
+        <span class="tag">Host (test)</span>
+        <input id="file" type="file" accept="audio/*" />
+        <button id="play" type="button" aria-label="Play / Pause" disabled>▶</button>
+        <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Playback position" />
+        <span id="time">0:00 / 0:00</span>
+        <audio id="player" preload="metadata"></audio>
+      </div>
 
-      <section class="panel">
-        <div class="row">
-          <input id="file" type="file" accept="audio/*" />
-          <label class="bypass"><input id="bypass" type="checkbox" /> 보정 끄기 (원본과 비교)</label>
-          <button id="reset" type="button">학습 초기화</button>
-          <span id="status">파일을 선택해 재생하세요.</span>
+      <div class="plugin">
+        <div class="titlebar">
+          <span class="logo">AUTO<b>EQ</b></span>
+          <span class="spacer"></span>
+          <label class="sw" title="Turn off all EQ and hear the original"><input id="bypass" type="checkbox" /><span>BYPASS</span></label>
         </div>
-        <audio id="player" controls></audio>
-      </section>
 
-      <section class="panel">
-        <canvas id="spectrum"></canvas>
-        <canvas id="correction"></canvas>
-        <div class="legend">
-          <span><i style="border-color: #6b7380; border-top-style: dashed"></i>목표 곡선</span>
-          <span><i style="border-color: #c7ccd6"></i>입력(음량 정렬)</span>
-          <span><i style="border-color: #5ad1a5"></i>보정 후 예상</span>
+        <div class="eqwrap">
+          <canvas id="eq" aria-label="EQ curve. Double-click to add a band."></canvas>
+          <div id="band-pop" class="pop" hidden></div>
         </div>
-      </section>
 
-      <section class="panel controls">
-        <label>보정 강도 <output id="amount-out"></output>
-          <input id="amount" type="range" min="0" max="100" step="1" value="100" />
-        </label>
-        <label>목표 기울기 (옥타브당) <output id="slope-out"></output>
-          <input id="slope" type="range" min="-6" max="0" step="0.1" value="-3" />
-        </label>
-        <label>최대 보정량 <output id="max-out"></output>
-          <input id="max" type="range" min="1" max="12" step="0.5" value="6" />
-        </label>
-        <label>평균 시간 <output id="avg-out"></output>
-          <input id="avg" type="range" min="0.5" max="15" step="0.5" value="4" />
-        </label>
-      </section>
+        <div class="bands">
+          <div class="stripbar">
+            <div id="band-strip" class="strip"></div>
+            <div class="stripactions">
+              <button id="add-band" class="tab add" type="button" title="Add band" aria-label="Add band">+</button>
+              <button id="clear-bands" class="clear" type="button">Clear all</button>
+            </div>
+          </div>
+          <div id="band-bar" class="bar"></div>
+        </div>
+
+        <div class="learnrow">
+          <button id="learn-toggle" class="learnbtn" type="button" title="Press LEARN and play a representative section. The analysis builds up and the bands move to find their best values. Press STOP to lock them in."><i></i><span>LEARN</span></button>
+          <span id="learn-info" class="hint learninfo"></span>
+          <div class="learnknobs">
+            <div id="k-amount"></div>
+            <div id="k-max"></div>
+            <div id="k-bands"></div>
+          </div>
+          <span class="spacer"></span>
+          <button id="auto-more" class="btn" type="button" aria-expanded="false">Options ▾</button>
+        </div>
+
+        <div id="auto-drawer" class="drawer" hidden>
+          <div id="k-smooth"></div>
+          <div id="k-minhz"></div>
+          <div id="k-maxhz"></div>
+          <span class="sep"></span>
+          <label class="hint" for="target-mode">Target</label>
+          <select id="target-mode" title="Own trend keeps the overall tilt and only smooths spots that stick out. Reference matches a song you saved.">
+            <option value="own">Own trend</option>
+            <option value="ref" disabled>Reference</option>
+          </select>
+          <button id="save-ref" class="btn" type="button" title="Learn a song you like, then save its tone as a reference">Save as reference</button>
+          <span id="ref-state" class="hint"></span>
+          <span class="spacer"></span>
+          <button id="reset" class="btn" type="button">Clear learned</button>
+        </div>
+
+        <div class="foot">
+          <span id="status">Open a file and press play.</span>
+          <span>Double-click: add · Drag: move · Wheel: Q · Delete: remove · Knobs: drag, wheel, dbl-click resets</span>
+        </div>
+      </div>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
