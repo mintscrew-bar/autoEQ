@@ -30,6 +30,11 @@ AutoEQProcessor::AutoEQProcessor()
     autoMax_ = apvts.getRawParameterValue("auto_max");
     autoSmooth_ = apvts.getRawParameterValue("auto_smooth");
     autoBands_ = apvts.getRawParameterValue("auto_bands");
+    autoMode_ = apvts.getRawParameterValue("auto_mode");
+    liveSeconds_ = apvts.getRawParameterValue("live_seconds");
+    autoGate_ = apvts.getRawParameterValue("auto_gate");
+    instrument_ = apvts.getRawParameterValue("instrument");
+    instMatch_ = apvts.getRawParameterValue("inst_match");
     for (int b = 0; b < kNumBands; ++b) {
         auto get = [&](const char* n) { return apvts.getRawParameterValue(bandId(b, n)); };
         bandParams_[size_t(b)] = {get("on"), get("type"), get("freq"), get("gain"), get("q"), get("dyn"), get("thr"), get("range"), get("att"), get("rel"), get("mode")};
@@ -111,7 +116,16 @@ void AutoEQProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         wasLearning_ = learning;
         if (learning) analyzer.startLearning(); else analyzer.stopLearning();
     }
-    analyzer.setOptions(double(autoMax_->load()), double(autoSmooth_->load()), int(autoBands_->load()));
+    AnalyzerSettings st;
+    st.maxCorrectionDb = double(autoMax_->load());
+    st.smoothOctaves = double(autoSmooth_->load());
+    st.maxAutoBands = int(autoBands_->load());
+    st.live = autoMode_->load() > 0.5f;
+    st.liveSeconds = double(liveSeconds_->load());
+    st.gateDb = double(autoGate_->load());
+    st.instrument = int(instrument_->load());
+    st.instrumentMatch = double(instMatch_->load());
+    analyzer.setSettings(st);
     if (learning) {
         if (mono_.size() < size_t(numSamples)) mono_.resize(size_t(numSamples));
         const float* l = buffer.getReadPointer(0);

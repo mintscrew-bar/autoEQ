@@ -65,8 +65,21 @@ AutoEQEditor::AutoEQEditor(AutoEQProcessor& p)
     : AudioProcessorEditor(&p), proc_(p), curve_(p),
       outputA_(p.apvts, "output", output_), amountA_(p.apvts, "auto_amount", amount_), maxA_(p.apvts, "auto_max", maxDb_),
       smoothA_(p.apvts, "auto_smooth", smooth_), autoBandsA_(p.apvts, "auto_bands", autoBands_),
+      matchA_(p.apvts, "inst_match", match_), liveSecA_(p.apvts, "live_seconds", liveSec_),
       bypassA_(p.apvts, "bypass", bypass_), learnA_(p.apvts, "learn", learn_) {
-    setSize(820, 520);
+    setSize(820, 560);
+    instrument_.addItemList([] {
+        juce::StringArray names{"Off", "Auto"};
+        for (const auto& inst : aeq::instruments()) names.add(inst.name);
+        return names;
+    }(), 1);
+    autoMode_.addItemList({"Learn (then lock)", "Live (keeps following)"}, 1);
+    instrumentA_ = std::make_unique<ComboAttachment>(p.apvts, "instrument", instrument_);
+    autoModeA_ = std::make_unique<ComboAttachment>(p.apvts, "auto_mode", autoMode_);
+    addAndMakeVisible(instrument_);
+    addAndMakeVisible(autoMode_);
+    setupKnob(*this, match_, matchL_, "Instrument Match");
+    setupKnob(*this, liveSec_, liveSecL_, "Live Window", " s");
     addAndMakeVisible(curve_);
     addAndMakeVisible(bypass_);
     addAndMakeVisible(learn_);
@@ -115,8 +128,13 @@ void AutoEQEditor::bindBand(int band) {
 
 void AutoEQEditor::timerCallback() {
     curve_.repaint();
-    if (proc_.analyzer.isLearning())
-        status_.setText("Learning… confidence " + juce::String(int(proc_.analyzer.confidence() * 100)) + "%", juce::dontSendNotification);
+    if (proc_.analyzer.isLearning()) {
+        const int inst = proc_.analyzer.activeInstrument();
+        const juce::String name = inst >= 0 ? juce::String(aeq::instruments()[size_t(inst)].name) : juce::String("none");
+        status_.setText(juce::String(autoMode_.getSelectedId() == 2 ? "Live" : "Learning") + "… confidence " +
+                            juce::String(int(proc_.analyzer.confidence() * 100)) + "%   instrument: " + name,
+                        juce::dontSendNotification);
+    }
     else
         status_.setText(learn_.getToggleState() ? "Starting…" : "Press LEARN, play a representative section, then press LEARN again to lock.", juce::dontSendNotification);
 }
@@ -133,8 +151,15 @@ void AutoEQEditor::resized() {
     curve_.setBounds(r.removeFromTop(230));
     r.removeFromTop(8);
 
+    auto modeRow = r.removeFromTop(28);
+    autoMode_.setBounds(modeRow.removeFromLeft(200).reduced(0, 2));
+    modeRow.removeFromLeft(10);
+    instrument_.setBounds(modeRow.removeFromLeft(200).reduced(0, 2));
+
     auto autoRow = r.removeFromTop(104);
-    const int w = autoRow.getWidth() / 5;
+    const int w = autoRow.getWidth() / 7;
+    place(match_, matchL_, autoRow.removeFromLeft(w));
+    place(liveSec_, liveSecL_, autoRow.removeFromLeft(w));
     place(amount_, amountL_, autoRow.removeFromLeft(w));
     place(maxDb_, maxL_, autoRow.removeFromLeft(w));
     place(smooth_, smoothL_, autoRow.removeFromLeft(w));

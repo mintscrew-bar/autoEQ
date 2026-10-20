@@ -225,6 +225,14 @@
           <div id="k-minhz"></div>
           <div id="k-maxhz"></div>
           <span class="sep"></span>
+          <label class="hint" for="instrument">Instrument</label>
+          <select id="instrument" title="Tell LEARN what this track is. It then treats that instrument's normal tone as fine and only fixes what sticks out of it. Auto guesses from the spectrum shape and only applies when it is confident.">
+            <option value="auto">Auto</option>
+            <option value="off">Off (whole mix)</option>
+          </select>
+          <div id="k-match"></div>
+          <span id="inst-info" class="hint"></span>
+          <span class="sep"></span>
           <label class="hint" for="target-mode">Target</label>
           <select id="target-mode" title="Own trend keeps the overall tilt and only smooths spots that stick out. Reference matches a song you saved.">
             <option value="own">Own trend</option>

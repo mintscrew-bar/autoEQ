@@ -5,7 +5,8 @@ import { AutoEq, type AutoEqOptions } from "./autoEq";
 import { fitBands } from "./autoBands";
 import { makeBands } from "./bands";
 import type { FilterSpec } from "./response";
-import { applyFilters, bandFrames, meanBands, pinkNoise, shapeError, SAMPLE_RATE, FFT_SIZE } from "./testkit";
+import { applyFilters, bandFrames, meanBands, pinkNoise, shapeError, shapeSpectrum, SAMPLE_RATE, FFT_SIZE } from "./testkit";
+import { instrumentById, octaveDb, profileTarget, type InstrumentId } from "./instruments";
 
 const layout = makeBands();
 const SECONDS = 16;
@@ -24,12 +25,16 @@ interface Result {
 }
 
 function run(clean: FilterSpec[], flaws: FilterSpec[], seed = 1, seconds = SECONDS, options: Partial<AutoEqOptions> = {}): Result {
-  const reference = applyFilters(pinkNoise(seconds * SAMPLE_RATE, seed), clean);
+  return runWith(applyFilters(pinkNoise(seconds * SAMPLE_RATE, seed), clean), flaws, options);
+}
+
+function runWith(reference: Float64Array, flaws: FilterSpec[], options: Partial<AutoEqOptions> = {}, instrumentTarget?: number[]): Result {
   const flawed = applyFilters(reference, flaws);
   const refLevels = meanBands(bandFrames(reference, layout));
 
   const frames = bandFrames(flawed, layout);
   const eq = new AutoEq(layout.centers, options);
+  if (instrumentTarget) eq.setInstrument(instrumentTarget);
   for (const f of frames) expect(eq.update(f, HOP_SECONDS)).toBe(true);
   const fits = fitBands(layout.centers, eq.correction(), { maxBands: 8, minGainDb: 0.5 }).map(
     (f): FilterSpec => ({ type: "bell", ...f }),
@@ -38,6 +43,12 @@ function run(clean: FilterSpec[], flaws: FilterSpec[], seed = 1, seconds = SECON
   const corrected = applyFilters(flawed, fits);
   const err = (signal: Float64Array) => shapeError(meanBands(bandFrames(signal, layout)), refLevels, layout.centers, MIN_HZ, MAX_HZ);
   return { before: err(flawed), after: err(corrected), fits };
+}
+
+/** 옥타브 에너지 곡선이 악기 프로파일인 신호(핑크 노이즈를 프로파일로 성형) */
+function instrumentSignal(id: InstrumentId, seed = 1, seconds = SECONDS): Float64Array {
+  const p = instrumentById(id);
+  return shapeSpectrum(pinkNoise(seconds * SAMPLE_RATE, seed), (hz) => octaveDb(p.anchors, hz));
 }
 
 const summary: string[] = [];
@@ -94,6 +105,47 @@ describe("닫힌 루프: 결함을 넣은 신호를 보정하면 원본 모양�
     report("재현성(seed 11)", rs[0]!);
     expect(Math.max(...ratios)).toBeLessThan(0.8);
   });
+
+  it("악기 프로파일을 주면 휘어진 스펙트럼의 오탐이 사라지고 결함 보정은 유지된다", () => {
+    // 같은 신호를 프로파일 없이(곡 자신의 추세만) / 프로파일과 함께(잔차에서 결함 탐색) 분석한다.
+    const rows: string[] = [];
+    for (const id of ["vocal", "bass", "piano", "cymbals"] as InstrumentId[]) {
+      const target = profileTarget(instrumentById(id), layout.centers);
+      const reference = instrumentSignal(id, 3);
+      const flaw = [bell(id === "bass" ? 250 : id === "cymbals" ? 4000 : 500, 3, 5)];
+
+      const cleanWithout = runWith(reference, [], {});
+      const cleanWith = runWith(reference, [], { instrumentMatch: 0 }, target);
+      const flawWithout = runWith(reference, flaw, {});
+      const flawWith = runWith(reference, flaw, { instrumentMatch: 0 }, target);
+      rows.push(
+        `${id.padEnd(8)} 결함 없음 오탐 ${cleanWithout.after.toFixed(2)} → ${cleanWith.after.toFixed(2)}   ` +
+          `결함 +3dB 오차 ${flawWithout.before.toFixed(2)} → 프로파일 없이 ${flawWithout.after.toFixed(2)} / 있이 ${flawWith.after.toFixed(2)}`,
+      );
+      // 프로파일이 설명하는 굴곡은 건드리지 않는다.
+      expect(cleanWith.after, `${id} 오탐`).toBeLessThanOrEqual(0.15);
+      expect(cleanWith.after, `${id} 오탐 비교`).toBeLessThanOrEqual(cleanWithout.after + 1e-9);
+      // 그 위의 결함은 줄인다.
+      expect(flawWith.after, `${id} 결함`).toBeLessThan(flawWith.before * 0.8);
+    }
+    summary.push(...rows);
+  }, 30000);
+
+  it("프로파일이 틀려도(다른 악기, 또는 같은 악기의 다른 녹음) 피해가 제한적이다", () => {
+    const rows: string[] = [];
+    const wrong: [InstrumentId, InstrumentId][] = [["piano", "vocal"], ["vocal", "eguitar"], ["aguitar", "eguitar"], ["bass", "kick"]];
+    for (const [actual, assumed] of wrong) {
+      const reference = instrumentSignal(actual, 5);
+      const target = profileTarget(instrumentById(assumed), layout.centers);
+      const none = runWith(reference, [], {});
+      const m0 = runWith(reference, [], { instrumentMatch: 0 }, target);
+      const m5 = runWith(reference, [], { instrumentMatch: 0.5 }, target);
+      rows.push(`틀린 프로파일 ${actual}→${assumed}: 결함 없는 신호를 만진 양 프로파일 없이 ${none.after.toFixed(2)} / match0 ${m0.after.toFixed(2)} / match0.5 ${m5.after.toFixed(2)} dB`);
+      expect(m5.after, `${actual}→${assumed}`).toBeLessThanOrEqual(3);
+    }
+    summary.push(...rows);
+    (globalThis as unknown as { process: { stderr: { write(s: string): void } } }).process.stderr.write(rows.join("\n") + "\n");
+  }, 30000);
 
   it("요약 출력", () => {
     (globalThis as unknown as { process: { stderr: { write(s: string): void } } }).process.stderr.write(`\n${summary.join("\n")}\n`);

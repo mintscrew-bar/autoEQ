@@ -8,10 +8,14 @@ constexpr double kGrace = 2.0;        // 짝이 사라진 밴드가 자리를 �
 constexpr double kFade = 1.5;         // 0으로 줄어든 뒤 슬롯을 비우기까지(초)
 constexpr double kMatchOct = 0.75;    // 같은 밴드로 이어지는 최대 거리(옥타브)
 constexpr double kRetargetEvery = 0.15;
+constexpr double kDetectMinConfidence = 0.5;  // 분석 시간 신뢰도가 이 값을 넘어야 악기를 판별한다
+constexpr double kDetectHold = 3.0;           // 같은 후보가 이만큼(초) 이어져야 악기를 바꾼다
+constexpr double kDetectDrop = 8.0;           // 확신이 이만큼(초) 없으면 악기 보정을 끈다
 double nowSeconds() { return juce::Time::getMillisecondCounterHiRes() / 1000.0; }
 }  // namespace
 
 AutoAnalyzer::AutoAnalyzer() : juce::Thread("AutoEQ analysis") {
+    for (const auto& p : aeq::instruments()) instrumentTargets_.push_back(aeq::profileTarget(p, layout_.centers));
     std::vector<float> ones(kFftSize, 1.f);
     window_.multiplyWithWindowingTable(ones.data(), size_t(kFftSize));
     double sum = 0;
@@ -35,10 +39,43 @@ void AutoAnalyzer::push(const float* mono, int numSamples) {
 void AutoAnalyzer::startLearning() { wantStart_ = true; }
 void AutoAnalyzer::stopLearning() { wantStop_ = true; }
 
-void AutoAnalyzer::setOptions(double maxCorrectionDb, double smoothOctaves, int maxAutoBands) {
-    maxCorrection_ = maxCorrectionDb;
-    smoothOctaves_ = smoothOctaves;
-    maxAuto_ = maxAutoBands;
+void AutoAnalyzer::setSettings(const AnalyzerSettings& st) {
+    maxCorrection_ = st.maxCorrectionDb;
+    smoothOctaves_ = st.smoothOctaves;
+    maxAuto_ = st.maxAutoBands;
+    live_ = st.live;
+    liveSeconds_ = st.liveSeconds;
+    gate_ = st.gateDb;
+    instrumentChoice_ = st.instrument;
+    instrumentMatch_ = st.instrumentMatch;
+}
+
+void AutoAnalyzer::applyInstrument(int index) {
+    if (index == appliedInstrument_) return;
+    appliedInstrument_ = index;
+    eq_.setInstrument(index >= 0 ? instrumentTargets_[size_t(index)] : std::vector<double>{});
+    activeInstrument_ = index;
+}
+
+/** 악기 선택(끔/자동/고정)에 따라 프로파일을 정한다. 자동이면 평균 스펙트럼 모양으로 판별하고 히스테리시스를 둔다. */
+void AutoAnalyzer::updateInstrument(double now) {
+    const int choice = instrumentChoice_.load();
+    if (choice == 0) { applyInstrument(-1); candidate_ = -1; return; }
+    if (choice >= 2) { applyInstrument(std::min(choice - 2, int(instrumentTargets_.size()) - 1)); return; }
+
+    const auto* avg = eq_.averageLevels();
+    if (!avg || eq_.confidence() < kDetectMinConfidence) return;
+    const auto r = aeq::identifyInstrument(*avg, layout_.centers);
+    if (!r.confident) {
+        candidate_ = -1;
+        if (appliedInstrument_ >= 0 && now - lastConfident_ > kDetectDrop) applyInstrument(-1);
+        return;
+    }
+    const int best = r.ranking[0].index;
+    lastConfident_ = now;
+    if (best == appliedInstrument_) { candidate_ = -1; return; }
+    if (best != candidate_) { candidate_ = best; candidateSince_ = now; return; }
+    if (now - candidateSince_ >= kDetectHold) { applyInstrument(best); candidate_ = -1; }
 }
 
 bool AutoAnalyzer::tryCopyTargets(AutoTargets& out) const {
@@ -77,7 +114,13 @@ void AutoAnalyzer::run() {
         wait(15);
 
         if (wantStart_.exchange(false)) {
-            eq_.beginLearning();
+            auto o0 = eq_.options();
+            o0.averageSeconds = liveSeconds_.load();
+            eq_.setOptions(o0);
+            if (live_.load()) eq_.beginAdaptive(); else eq_.beginLearning();
+            appliedInstrument_ = -2;  // 새 학습이므로 악기를 다시 정한다
+            candidate_ = -1;
+            lastConfident_ = nowSeconds();
             slots_ = {};
             proposed_.clear();
             ringFilled_ = 0;
@@ -102,10 +145,12 @@ void AutoAnalyzer::run() {
 
         // 옵션 반영
         auto o = eq_.options();
-        const double mc = maxCorrection_.load(), so = smoothOctaves_.load();
-        if (o.maxCorrectionDb != mc || o.smoothOctaves != so) {
+        const double mc = maxCorrection_.load(), so = smoothOctaves_.load(), gate = gate_.load(), im = instrumentMatch_.load() * (instrumentChoice_.load() == 1 ? 0.5 : 1.0);  // Auto 판별은 틀릴 수 있어 절반만 적용
+        if (o.maxCorrectionDb != mc || o.smoothOctaves != so || o.gateDb != gate || o.instrumentMatch != im) {
             o.maxCorrectionDb = mc;
             o.smoothOctaves = so;
+            o.gateDb = gate;
+            o.instrumentMatch = im;
             eq_.setOptions(o);
         }
 
@@ -126,6 +171,7 @@ void AutoAnalyzer::run() {
         const double now = nowSeconds();
         if (eq_.hasData() && now - lastRetarget_ >= kRetargetEvery) {
             lastRetarget_ = now;
+            updateInstrument(now);
             retarget(now);
             confidence_ = float(eq_.confidence());
         }

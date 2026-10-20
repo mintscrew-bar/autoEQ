@@ -19,6 +19,7 @@ struct AutoEqOptions {
     double gateDb = -75.0;
     double confidenceSeconds = 8.0;
     double deadbandDb = 0.5;
+    double instrumentMatch = 0.5;  // 악기 음색에서 벗어난 넓은 불균형을 바로잡는 정도 0~1
 };
 
 namespace detail {
@@ -59,8 +60,20 @@ public:
     }
     const AutoEqOptions& options() const { return options_; }
 
+    /** 시작부터의 전체 평균으로 학습한다(파일·LEARN 후 고정용) */
     void beginLearning() { reset(); cumulative_ = true; }
+    /** 지수 이동평균으로 계속 따라간다(라이브 모니터링용). 평균 시간은 options.averageSeconds */
+    void beginAdaptive() { reset(); cumulative_ = false; }
     void endLearning() { cumulative_ = false; }
+
+    /** 악기 프로파일(밴드 중심별 dB). 빈 벡터면 해제 */
+    void setInstrument(const std::vector<double>& target) {
+        if (!target.empty() && target.size() != centers_.size()) throw std::invalid_argument("band count mismatch");
+        instrument_ = target;
+        if (average_) recompute();
+    }
+    bool hasInstrument() const { return !instrument_.empty(); }
+    const std::vector<double>* averageLevels() const { return average_ ? &*average_ : nullptr; }
 
     void reset() {
         elapsed_ = 0;
@@ -118,7 +131,11 @@ private:
             if (active[i]) activeIdx.push_back(i);
         }
 
-        std::vector<double> target = avg;
+        // 악기 프로파일이 있으면 그것을 뺀 잔차에서 추세를 구한다. 프로파일이 설명하는 굴곡은 결함이 아니다.
+        const bool inst = !instrument_.empty();
+        std::vector<double> base = avg;
+        if (inst) for (size_t i = 0; i < n; ++i) base[i] -= instrument_[i];
+        std::vector<double> target = base;
         for (size_t i : activeIdx) {
             const double here = std::log2(centers_[i]);
             std::vector<double> xs, ys;
@@ -126,10 +143,20 @@ private:
                 const double x = std::log2(centers_[j]);
                 if (std::abs(x - here) <= options_.smoothOctaves + 1e-9) {
                     xs.push_back(x);
-                    ys.push_back(avg[j]);
+                    ys.push_back(base[j]);
                 }
             }
             target[i] = detail::robustLineAt(xs, ys, here);
+        }
+        std::vector<double> pull(n, 0.0);
+        if (inst) {
+            std::vector<double> trendActive;
+            for (size_t i : activeIdx) trendActive.push_back(target[i]);
+            const double medTrend = detail::median(trendActive);
+            for (size_t i = 0; i < n; ++i) {
+                pull[i] = -options_.instrumentMatch * (target[i] - medTrend);
+                target[i] += instrument_[i];
+            }
         }
         std::vector<double> levels;
         for (size_t i : activeIdx) levels.push_back(avg[i]);
@@ -144,7 +171,7 @@ private:
                 correction_[i] = 0.0;
                 continue;
             }
-            const double dev = target[i] - aligned_[i];
+            const double dev = target[i] - aligned_[i] + pull[i];
             const double raw = detail::sign(dev) * std::max(0.0, std::abs(dev) - options_.deadbandDb);
             const double clamped = std::max(-options_.maxCorrectionDb, std::min(options_.maxCorrectionDb, raw));
             correction_[i] = clamped * options_.amount * conf;
@@ -154,6 +181,7 @@ private:
     std::vector<double> centers_;
     AutoEqOptions options_;
     std::optional<std::vector<double>> average_;
+    std::vector<double> instrument_;
     bool cumulative_ = false;
     double elapsed_ = 0;
     std::vector<double> aligned_, trend_, correction_;

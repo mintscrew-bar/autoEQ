@@ -11,6 +11,7 @@
 #include "dsp/AutoBands.h"
 #include "dsp/AutoEq.h"
 #include "dsp/Bands.h"
+#include "dsp/Instruments.h"
 
 namespace autoeq {
 
@@ -19,6 +20,17 @@ struct AutoTarget {
     float freq = 1000.f, gain = 0.f, q = 1.f;
 };
 using AutoTargets = std::array<AutoTarget, kNumAuto>;
+
+/** 오디오 스레드가 분석 스레드에 넘기는 설정 */
+struct AnalyzerSettings {
+    double maxCorrectionDb = 3.0, smoothOctaves = 1.5;
+    int maxAutoBands = 5;
+    bool live = false;
+    double liveSeconds = 20.0;
+    double gateDb = -75.0;
+    int instrument = 1;  // 0 끔, 1 자동 판별, 2~ 고정(instruments()[n-2])
+    double instrumentMatch = 0.5;
+};
 
 class AutoAnalyzer : private juce::Thread {
 public:
@@ -31,7 +43,9 @@ public:
 
     void startLearning();
     void stopLearning();
-    void setOptions(double maxCorrectionDb, double smoothOctaves, int maxAutoBands);
+    void setSettings(const AnalyzerSettings& s);
+    /** 지금 적용 중인 악기(instruments() 인덱스, 없으면 -1). 자동 판별이면 판별 결과 */
+    int activeInstrument() const { return activeInstrument_.load(); }
 
     /** 오디오 스레드: 잠겨 있지 않으면 최신 목표를 복사한다. 복사했으면 true */
     bool tryCopyTargets(AutoTargets& out) const;
@@ -75,8 +89,17 @@ private:
     std::atomic<double> sampleRate_{48000.0};
     std::atomic<bool> learning_{false};
     std::atomic<bool> wantStart_{false}, wantStop_{false};
-    std::atomic<double> maxCorrection_{3.0}, smoothOctaves_{1.5};
-    std::atomic<int> maxAuto_{5};
+    std::atomic<double> maxCorrection_{3.0}, smoothOctaves_{1.5}, liveSeconds_{20.0}, gate_{-75.0}, instrumentMatch_{0.5};
+    std::atomic<int> maxAuto_{5}, instrumentChoice_{1};
+    std::atomic<bool> live_{false};
+    std::atomic<int> activeInstrument_{-1};
+    // 자동 판별(분석 스레드 전용): 깜박임을 막으려고 같은 후보가 일정 시간 이어져야 바꾼다
+    void updateInstrument(double now);
+    void applyInstrument(int index);
+    int appliedInstrument_ = -1;
+    int candidate_ = -1;
+    double candidateSince_ = 0, lastConfident_ = 0;
+    std::vector<std::vector<double>> instrumentTargets_;
     std::atomic<float> confidence_{0.f};
 
     std::array<Slot, kNumAuto> slots_{};

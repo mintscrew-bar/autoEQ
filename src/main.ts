@@ -3,6 +3,7 @@ import { fitBands, type AutoBandFit } from "./dsp/autoBands";
 import { DEFAULT_DYN, MAX_RANGE, dynamicTarget, smoothAmount, type DynSettings } from "./dsp/dynamics";
 import { AutoEq } from "./dsp/autoEq";
 import { makeBands } from "./dsp/bands";
+import { INSTRUMENTS, identifyInstrument, instrumentById, profileTarget, type InstrumentId } from "./dsp/instruments";
 import {
   FILTER_LABELS,
   defaultQ,
@@ -147,6 +148,77 @@ mountKnob("k-maxhz", {
   snap: (v) => Math.round(v / 500) * 500,
   apply: (v) => eq.setOptions({ maxHz: v }),
 });
+const instrumentSel = $<HTMLSelectElement>("instrument");
+// Auto가 고른 프로파일은 판별이 틀릴 수 있어(NOTES.md) Match를 절반만 적용한다.
+let userMatch = 0.3;
+function syncMatch(): void {
+  eq.setOptions({ instrumentMatch: userMatch * (instrumentSel.value === "auto" ? 0.5 : 1) });
+}
+mountKnob("k-match", {
+  size: "sm",
+  label: "Match",
+  min: 0,
+  max: 1,
+  value: 0.3,
+  reset: 0.3,
+  title: "Instrument match: how far to pull the overall balance toward the chosen instrument's normal tone. 0 only fixes narrow spots.",
+  format: (v) => `${Math.round(v * 100)}%`,
+  parse: parseGain,
+  snap: (v) => Math.round(v * 20) / 20,
+  apply: (v) => {
+    userMatch = v;
+    syncMatch();
+  },
+});
+
+// 악기: 고르거나 Auto(스펙트럼 모양으로 추정, 확신이 있을 때만 적용, 깜박임 방지로 같은 후보가 3초 이어져야 바꾼다)
+const instInfo = $("inst-info");
+for (const p of INSTRUMENTS) instrumentSel.add(new Option(p.name, p.id));
+let appliedInstrument: InstrumentId | null = null;
+let instCandidate: InstrumentId | null = null;
+let instCandidateSince = 0;
+let instLastConfident = 0;
+
+function applyInstrument(id: InstrumentId | null): void {
+  appliedInstrument = id;
+  eq.setInstrument(id ? profileTarget(instrumentById(id), layout.centers) : null);
+  instInfo.textContent =
+    instrumentSel.value === "auto" ? (id ? `Detected: ${instrumentById(id).name}` : "Detecting…") : "";
+}
+
+function updateInstrument(now: number): void {
+  const sel = instrumentSel.value;
+  if (sel !== "auto") return;
+  const avg = eq.averageLevels();
+  if (!avg || eq.confidence() < 0.5) return;
+  const r = identifyInstrument(avg, layout.centers);
+  if (!r.confident) {
+    instCandidate = null;
+    if (appliedInstrument && now - instLastConfident > 8000) applyInstrument(null);
+    return;
+  }
+  const best = r.ranking[0]!.id;
+  instLastConfident = now;
+  if (best === appliedInstrument) {
+    instCandidate = null;
+  } else if (best !== instCandidate) {
+    instCandidate = best;
+    instCandidateSince = now;
+  } else if (now - instCandidateSince >= 3000) {
+    applyInstrument(best);
+    instCandidate = null;
+  }
+}
+
+instrumentSel.addEventListener("change", () => {
+  instCandidate = null;
+  syncMatch();
+  const v = instrumentSel.value;
+  applyInstrument(v === "auto" || v === "off" ? null : (v as InstrumentId));
+  if (v === "off") instInfo.textContent = "";
+});
+applyInstrument(null);
+
 let maxAutoBands = 5;
 mountKnob("k-bands", {
   size: "sm",
@@ -669,6 +741,7 @@ function clearLearned(): void {
 function startLearning(): void {
   clearLearned();
   eq.beginLearning();
+  if (instrumentSel.value === "auto") applyInstrument(null);
   learning = true;
   learnSeconds = 0;
   syncLearnUi();
@@ -1032,6 +1105,7 @@ function frame(now: number): void {
   // 자동 밴드: 목표는 일정 간격으로 다시 정하고, 움직임은 매 프레임 이어 간다.
   if (learning && now - lastFit >= FIT_INTERVAL_MS) {
     lastFit = now;
+    updateInstrument(now);
     retargetAutoBands(now);
   }
   glideAutoBands(dt);

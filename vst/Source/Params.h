@@ -1,6 +1,7 @@
 // 플러그인 파라미터 정의. 밴드 8개(수동) + 자동 보정(LEARN) 설정.
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "dsp/Instruments.h"
 #include "dsp/Response.h"
 
 namespace autoeq {
@@ -36,6 +37,14 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout() {
     layout.add(std::make_unique<juce::AudioParameterFloat>(P{"auto_max", 1}, "Auto Max dB", juce::NormalisableRange<float>(0.5f, 6.f, 0.1f), 3.f));
     layout.add(std::make_unique<juce::AudioParameterFloat>(P{"auto_smooth", 1}, "Auto Smooth Oct", juce::NormalisableRange<float>(0.5f, 3.f, 0.1f), 1.5f));
     layout.add(std::make_unique<juce::AudioParameterInt>(P{"auto_bands", 1}, "Auto Bands", 1, kNumAuto, 5));
+    // Learn: 시작부터의 전체 평균으로 학습한 뒤 고정. Live: 입력을 계속 천천히 따라간다(라이브 모니터링).
+    layout.add(std::make_unique<juce::AudioParameterChoice>(P{"auto_mode", 1}, "Auto Mode", juce::StringArray{"Learn", "Live"}, 0));
+    layout.add(std::make_unique<juce::AudioParameterFloat>(P{"live_seconds", 1}, "Live Window", juce::NormalisableRange<float>(5.f, 120.f, 1.f, 0.5f), 20.f));
+    layout.add(std::make_unique<juce::AudioParameterFloat>(P{"auto_gate", 1}, "Gate dB", juce::NormalisableRange<float>(-100.f, -40.f, 1.f), -75.f));
+    juce::StringArray instNames{"Off", "Auto"};
+    for (const auto& inst : aeq::instruments()) instNames.add(inst.name);
+    layout.add(std::make_unique<juce::AudioParameterChoice>(P{"instrument", 1}, "Instrument", instNames, 1));
+    layout.add(std::make_unique<juce::AudioParameterFloat>(P{"inst_match", 1}, "Instrument Match", juce::NormalisableRange<float>(0.f, 1.f, 0.01f), 0.3f));
 
     for (int b = 0; b < kNumBands; ++b) {
         const juce::String n = "Band " + juce::String(b + 1) + " ";

@@ -150,3 +150,30 @@ export function shapeError(
   const off = median(diffs);
   return Math.sqrt(diffs.reduce((s, d) => s + (d - off) ** 2, 0) / diffs.length);
 }
+
+/**
+ * 신호의 스펙트럼 크기를 gainDbAt(Hz)만큼 바꾼다(제로 위상, FFT 곱셈). 핑크 노이즈를 옥타브 에너지 곡선이 있는 신호로 만들 때 쓴다.
+ */
+export function shapeSpectrum(signal: Float64Array, gainDbAt: (hz: number) => number): Float64Array {
+  let n = 1;
+  while (n < signal.length) n <<= 1;
+  const re = new Float64Array(n);
+  const im = new Float64Array(n);
+  re.set(signal);
+  fft(re, im);
+  for (let k = 0; k <= n / 2; k++) {
+    const g = 10 ** (gainDbAt(Math.max(1, (k * SAMPLE_RATE) / n)) / 20);
+    re[k]! *= g;
+    im[k]! *= g;
+    if (k > 0 && k < n / 2) {
+      re[n - k]! *= g;
+      im[n - k]! *= g;
+    }
+  }
+  // 역변환: ifft(x) = conj(fft(conj(x))) / n
+  for (let i = 0; i < n; i++) im[i] = -im[i]!;
+  fft(re, im);
+  const out = new Float64Array(signal.length);
+  for (let i = 0; i < out.length; i++) out[i] = re[i]! / n;
+  return out;
+}

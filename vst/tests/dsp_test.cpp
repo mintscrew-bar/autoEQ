@@ -1,12 +1,15 @@
 // C++ DSP 코어가 TypeScript 기준 구현과 같은 값을 내는지 확인한다. JUCE 없이 g++만으로 돌아간다.
 #include <cmath>
 #include <cstdio>
+#include <string>
 #include "../Source/dsp/AutoBands.h"
 #include "../Source/dsp/AutoEq.h"
 #include "../Source/dsp/Bands.h"
 #include "../Source/dsp/Dynamics.h"
 #include "../Source/dsp/Response.h"
+#include "../Source/dsp/Instruments.h"
 #include "golden.h"
+#include "golden2.h"
 
 static int failures = 0;
 static void check(const char* what, double got, double want, double tol = 1e-6) {
@@ -76,6 +79,27 @@ int main() {
         check("dyn below", dynamicTarget(levels[i], -40, DynMode::Below), kDynBelow[i]);
     }
     check("smoothAmount", smoothAmount(0.2, 1, 0.01, 5, 80), kSmooth, 1e-9);
+
+    // 악기 프로파일
+    {
+        const auto& list = instruments();
+        const std::vector<const std::vector<double>*> targets = {&kTarget_vocal, &kTarget_kick, &kTarget_snare, &kTarget_bass, &kTarget_eguitar,
+                                                                  &kTarget_aguitar, &kTarget_piano, &kTarget_cymbals, &kTarget_strings};
+        check("instrument count", double(list.size()), double(targets.size()));
+        for (size_t k = 0; k < list.size() && k < targets.size(); ++k) checkVec(list[k].id, profileTarget(list[k], layout.centers), *targets[k]);
+
+        AutoEqOptions oi; oi.confidenceSeconds = 0; oi.instrumentMatch = 0.5;
+        AutoEq eqi(layout.centers, oi);
+        eqi.setInstrument(profileTarget(list[0], layout.centers));
+        eqi.update(kInstInput, 0.05);
+        checkVec("instrument correction", eqi.correction(), kInstCorrection);
+
+        const auto id = identifyInstrument(kKickish, layout.centers);
+        check("ident best", id.ranking[0].distance, kIdentBest, 1e-6);
+        check("ident second", id.ranking[1].distance, kIdentSecond, 1e-6);
+        check("ident id", std::string(list[size_t(id.ranking[0].index)].id) == kIdentFirstId ? 1 : 0, 1);
+        check("ident confident", id.confident == kIdentConfident ? 1 : 0, 1);
+    }
 
     // 무음은 학습하지 않는다
     AutoEq quiet(layout.centers);

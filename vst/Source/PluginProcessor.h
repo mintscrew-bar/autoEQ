@@ -88,7 +88,8 @@ private:
     };
     std::array<BandParams, kNumBands> bandParams_{};
     std::atomic<float> *bypass_ = nullptr, *learn_ = nullptr, *output_p_ = nullptr, *autoAmount_ = nullptr,
-                       *autoMax_ = nullptr, *autoSmooth_ = nullptr, *autoBands_ = nullptr;
+                       *autoMax_ = nullptr, *autoSmooth_ = nullptr, *autoBands_ = nullptr, *autoMode_ = nullptr,
+                       *liveSeconds_ = nullptr, *autoGate_ = nullptr, *instrument_ = nullptr, *instMatch_ = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AutoEQProcessor)
 };

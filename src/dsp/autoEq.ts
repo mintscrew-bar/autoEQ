@@ -28,6 +28,11 @@ export interface AutoEqOptions {
   confidenceSeconds: number;
   /** 추세에서 이만큼(dB) 이내로 벗어난 것은 결함으로 보지 않는다. 넘은 만큼만 보정한다. 완만한 곡률·측정 잡음의 오탐을 막는다 */
   deadbandDb: number;
+  /**
+   * 악기 프로파일(setInstrument)을 쓸 때, 악기 고유 음색에서 벗어난 넓은 불균형을 얼마나 바로잡을지 0~1.
+   * 0이면 프로파일은 "정상적인 굴곡"을 알려 주는 용도로만 쓰이고(좁은 결함만 보정), 1이면 프로파일 모양으로 완전히 당긴다.
+   */
+  instrumentMatch: number;
 }
 
 export const DEFAULT_OPTIONS: AutoEqOptions = {
@@ -40,6 +45,7 @@ export const DEFAULT_OPTIONS: AutoEqOptions = {
   gateDb: -75,
   confidenceSeconds: 8,
   deadbandDb: 0.5,
+  instrumentMatch: 0.5,
 };
 
 function median(values: number[]): number {
@@ -74,6 +80,8 @@ export class AutoEq {
   private elapsed = 0;
   /** 레퍼런스에서 학습한 목표 곡선. 없으면 직선 목표를 쓴다 */
   private learned: number[] | null = null;
+  /** 악기 프로파일(밴드 중심별 dB, 분석기와 같은 영역). 없으면 곡 자신의 추세만 쓴다 */
+  private instrument: number[] | null = null;
   private alignedCurve: number[];
   private trendCurve: number[];
   private correctionCurve: number[];
@@ -132,6 +140,27 @@ export class AutoEq {
     this.learned = this.average.map((db) => db - offset);
     this.recompute();
     return true;
+  }
+
+  /**
+   * 악기 프로파일을 정한다(null이면 해제). 길이는 centers와 같아야 한다.
+   * 평균 스펙트럼에서 프로파일을 뺀 잔차로 좁은 결함을 찾으므로, 악기 고유의 굴곡이 결함으로 읽히지 않는다.
+   */
+  setInstrument(target: readonly number[] | null): void {
+    if (target && target.length !== this.centers.length) {
+      throw new Error(`밴드 수가 다릅니다: ${target.length} != ${this.centers.length}`);
+    }
+    this.instrument = target ? [...target] : null;
+    if (this.average) this.recompute();
+  }
+
+  hasInstrument(): boolean {
+    return this.instrument !== null;
+  }
+
+  /** 지금까지 쌓은 평균 스펙트럼(밴드 중심별 dB). 악기 추정에 쓴다 */
+  averageLevels(): readonly number[] | null {
+    return this.average;
   }
 
   /** 학습한 목표를 버리고 직선 목표로 돌아간다. */
@@ -215,6 +244,8 @@ export class AutoEq {
 
     let target: number[];
     let offset: number;
+    /** 추세 대비 어긋남에 더해지는, 악기 고유 음색 쪽으로 당기는 양(dB) */
+    let pull: number[] | null = null;
     if (this.learned) {
       target = this.learned;
       // 음량 차이를 없애려고 (목표 - 평균)의 중앙값을 오프셋으로 쓴다. 평균이 아니라 중앙값이라 한두 밴드가 튀어도 끌려가지 않는다.
@@ -222,16 +253,25 @@ export class AutoEq {
       offset = diffs.length ? median(diffs) : 0;
     } else {
       // 곡 자신의 추세: 좌우 smoothOctaves 안 밴드들에 맞춘 로버스트 직선의 값.
+      // 악기 프로파일이 있으면 그것을 뺀 잔차에서 추세를 구한다. 프로파일이 설명하는 굴곡은 결함이 아니다.
       // 가장자리에서는 창이 한쪽으로만 있지만, 직선은 기울기를 따로 맞추므로 한쪽으로 치우치지 않는다.
-      target = avg.slice();
+      const inst = this.instrument;
+      const base = inst ? avg.map((db, i) => db - (inst[i] ?? 0)) : avg;
+      target = base.slice();
       for (const i of activeIdx) {
         const here = Math.log2(this.centers[i] ?? 1);
         const near = activeIdx.filter((j) => Math.abs(Math.log2(this.centers[j] ?? 1) - here) <= smoothOctaves + 1e-9);
         target[i] = robustLineAt(
           near.map((j) => Math.log2(this.centers[j] ?? 1)),
-          near.map((j) => avg[j] ?? 0),
+          near.map((j) => base[j] ?? 0),
           here,
         );
+      }
+      if (inst) {
+        // 잔차의 넓은 추세가 평탄해지도록(= 프로파일 모양이 되도록) 당긴다. 전체 음량은 건드리지 않게 중앙값을 뺀다.
+        const medTrend = median(activeIdx.map((i) => target[i] ?? 0));
+        pull = target.map((t) => -this.options.instrumentMatch * (t - medTrend));
+        target = target.map((t, i) => t + (inst[i] ?? 0));
       }
       // 화면에서 보기 좋게 곡 전체 높이를 0dB 근처로 옮길 뿐, 보정량에는 영향이 없다.
       const levels = activeIdx.map((i) => avg[i] ?? 0);
@@ -243,7 +283,7 @@ export class AutoEq {
     const confidence = this.confidence();
     this.correctionCurve = this.alignedCurve.map((db, i) => {
       if (!active[i]) return 0;
-      const dev = (target[i] ?? 0) - db;
+      const dev = (target[i] ?? 0) - db + (pull?.[i] ?? 0);
       const raw = Math.sign(dev) * Math.max(0, Math.abs(dev) - deadbandDb);
       const clamped = Math.max(-maxCorrectionDb, Math.min(maxCorrectionDb, raw));
       return clamped * amount * confidence;
