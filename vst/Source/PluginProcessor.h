@@ -43,6 +43,13 @@ public:
     /** 에디터가 곡선을 그릴 때 쓰는, 지금 적용 중인 자동 밴드 */
     AutoTargets autoTargets() const { return analyzer.targets(); }
 
+    /** 에디터의 스펙트럼 표시용: 최근 입력(모노) 4096샘플을 시간 순서로 복사한다 */
+    static constexpr int kScope = 4096;
+    void copyScope(float* dst) const {
+        const int pos = scopePos_.load(std::memory_order_relaxed);
+        for (int i = 0; i < kScope; ++i) dst[i] = scope_[size_t((pos + i) % kScope)];
+    }
+
 private:
     static constexpr int kSub = 64;  // 파라미터·다이나믹을 갱신하는 단위(샘플)
 
@@ -80,6 +87,8 @@ private:
     AutoTargets lastTargets_{};
 
     std::vector<float> mono_;
+    std::array<float, kScope> scope_{};
+    std::atomic<int> scopePos_{0};
     std::vector<aeq::FilterSpec> chain_;  // 헤드룸 계산용(켜져 있는 필터). 오디오 스레드에서 할당하지 않도록 재사용한다
 
     // 파라미터 포인터는 생성 때 한 번만 찾아 둔다(오디오 스레드에서 문자열을 만들지 않으려고)

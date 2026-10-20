@@ -136,6 +136,17 @@ void AutoEQProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         analyzer.push(mono_.data(), numSamples);
     }
 
+    {   // 표시용 입력 기록(EQ 이전 신호)
+        const float* l = buffer.getReadPointer(0);
+        const float* r = buffer.getReadPointer(numChannels > 1 ? 1 : 0);
+        int pos = scopePos_.load(std::memory_order_relaxed);
+        for (int i = 0; i < numSamples; ++i) {
+            scope_[size_t(pos)] = 0.5f * (l[i] + r[i]);
+            pos = (pos + 1) % kScope;
+        }
+        scopePos_.store(pos, std::memory_order_relaxed);
+    }
+
     if (bypass_->load() > 0.5f) return;
 
     analyzer.tryCopyTargets(lastTargets_);
