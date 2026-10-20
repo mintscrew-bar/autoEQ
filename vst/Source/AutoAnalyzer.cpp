@@ -15,7 +15,7 @@ double nowSeconds() { return juce::Time::getMillisecondCounterHiRes() / 1000.0; 
 }  // namespace
 
 AutoAnalyzer::AutoAnalyzer() : juce::Thread("AutoEQ analysis") {
-    for (const auto& p : aeq::instruments()) instrumentTargets_.push_back(aeq::profileTarget(p, layout_.centers));
+    rebuildInstrumentTargets(0);
     std::vector<float> ones(kFftSize, 1.f);
     window_.multiplyWithWindowingTable(ones.data(), size_t(kFftSize));
     double sum = 0;
@@ -39,6 +39,12 @@ void AutoAnalyzer::push(const float* mono, int numSamples) {
 void AutoAnalyzer::startLearning() { wantStart_ = true; }
 void AutoAnalyzer::stopLearning() { wantStop_ = true; }
 
+void AutoAnalyzer::rebuildInstrumentTargets(int style) {
+    builtStyle_ = style;
+    instrumentTargets_.clear();
+    for (const auto& p : aeq::instruments()) instrumentTargets_.push_back(aeq::profileTarget(p, layout_.centers, size_t(style)));
+}
+
 void AutoAnalyzer::setSettings(const AnalyzerSettings& st) {
     maxCorrection_ = st.maxCorrectionDb;
     smoothOctaves_ = st.smoothOctaves;
@@ -48,6 +54,7 @@ void AutoAnalyzer::setSettings(const AnalyzerSettings& st) {
     gate_ = st.gateDb;
     instrumentChoice_ = st.instrument;
     instrumentMatch_ = st.instrumentMatch;
+    style_ = st.style;
 }
 
 void AutoAnalyzer::applyInstrument(int index) {
@@ -59,6 +66,13 @@ void AutoAnalyzer::applyInstrument(int index) {
 
 /** 악기 선택(끔/자동/고정)에 따라 프로파일을 정한다. 자동이면 평균 스펙트럼 모양으로 판별하고 히스테리시스를 둔다. */
 void AutoAnalyzer::updateInstrument(double now) {
+    const int style = std::clamp(style_.load(), 0, int(aeq::styles().size()) - 1);
+    if (style != builtStyle_) {  // 스타일이 바뀌면 프로파일을 다시 만들어 적용한다
+        rebuildInstrumentTargets(style);
+        const int current = std::max(-1, appliedInstrument_);
+        appliedInstrument_ = -2;
+        applyInstrument(current);
+    }
     const int choice = instrumentChoice_.load();
     if (choice == 0) { applyInstrument(-1); candidate_ = -1; return; }
     if (choice >= 2) { applyInstrument(std::min(choice - 2, int(instrumentTargets_.size()) - 1)); return; }
@@ -71,7 +85,7 @@ void AutoAnalyzer::updateInstrument(double now) {
         if (appliedInstrument_ >= 0 && now - lastConfident_ > kDetectDrop) applyInstrument(-1);
         return;
     }
-    const int best = r.ranking[0].index;
+    const int best = r.appliedIndex;
     lastConfident_ = now;
     if (best == appliedInstrument_) { candidate_ = -1; return; }
     if (best != candidate_) { candidate_ = best; candidateSince_ = now; return; }

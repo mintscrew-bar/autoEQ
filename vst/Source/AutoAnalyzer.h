@@ -29,7 +29,8 @@ struct AnalyzerSettings {
     double liveSeconds = 20.0;
     double gateDb = -75.0;
     int instrument = 1;  // 0 끔, 1 자동 판별, 2~ 고정(instruments()[n-2])
-    double instrumentMatch = 0.5;
+    double instrumentMatch = 0.3;
+    int style = 0;  // styles() 인덱스
 };
 
 class AutoAnalyzer : private juce::Thread {
@@ -90,13 +91,15 @@ private:
     std::atomic<bool> learning_{false};
     std::atomic<bool> wantStart_{false}, wantStop_{false};
     std::atomic<double> maxCorrection_{3.0}, smoothOctaves_{1.5}, liveSeconds_{20.0}, gate_{-75.0}, instrumentMatch_{0.5};
-    std::atomic<int> maxAuto_{5}, instrumentChoice_{1};
+    std::atomic<int> maxAuto_{5}, instrumentChoice_{1}, style_{0};
     std::atomic<bool> live_{false};
     std::atomic<int> activeInstrument_{-1};
     // 자동 판별(분석 스레드 전용): 깜박임을 막으려고 같은 후보가 일정 시간 이어져야 바꾼다
     void updateInstrument(double now);
     void applyInstrument(int index);
+    void rebuildInstrumentTargets(int style);
     int appliedInstrument_ = -1;
+    int builtStyle_ = -1;
     int candidate_ = -1;
     double candidateSince_ = 0, lastConfident_ = 0;
     std::vector<std::vector<double>> instrumentTargets_;

@@ -74,10 +74,17 @@ AutoEQEditor::AutoEQEditor(AutoEQProcessor& p)
         return names;
     }(), 1);
     autoMode_.addItemList({"Learn (then lock)", "Live (keeps following)"}, 1);
+    style_.addItemList([] {
+        juce::StringArray names;
+        for (const auto& st : aeq::styles()) names.add(st.name);
+        return names;
+    }(), 1);
     instrumentA_ = std::make_unique<ComboAttachment>(p.apvts, "instrument", instrument_);
     autoModeA_ = std::make_unique<ComboAttachment>(p.apvts, "auto_mode", autoMode_);
+    styleA_ = std::make_unique<ComboAttachment>(p.apvts, "style", style_);
     addAndMakeVisible(instrument_);
     addAndMakeVisible(autoMode_);
+    addAndMakeVisible(style_);
     setupKnob(*this, match_, matchL_, "Instrument Match");
     setupKnob(*this, liveSec_, liveSecL_, "Live Window", " s");
     addAndMakeVisible(curve_);
@@ -155,6 +162,8 @@ void AutoEQEditor::resized() {
     autoMode_.setBounds(modeRow.removeFromLeft(200).reduced(0, 2));
     modeRow.removeFromLeft(10);
     instrument_.setBounds(modeRow.removeFromLeft(200).reduced(0, 2));
+    modeRow.removeFromLeft(10);
+    style_.setBounds(modeRow.removeFromLeft(150).reduced(0, 2));
 
     auto autoRow = r.removeFromTop(104);
     const int w = autoRow.getWidth() / 7;

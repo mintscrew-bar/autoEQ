@@ -80,25 +80,41 @@ int main() {
     }
     check("smoothAmount", smoothAmount(0.2, 1, 0.01, 5, 80), kSmooth, 1e-9);
 
-    // 악기 프로파일
+    // 악기 프로파일, 스타일, 묶음 단위 판별
     {
         const auto& list = instruments();
-        const std::vector<const std::vector<double>*> targets = {&kTarget_vocal, &kTarget_kick, &kTarget_snare, &kTarget_bass, &kTarget_eguitar,
-                                                                  &kTarget_aguitar, &kTarget_piano, &kTarget_cymbals, &kTarget_strings};
-        check("instrument count", double(list.size()), double(targets.size()));
-        for (size_t k = 0; k < list.size() && k < targets.size(); ++k) checkVec(list[k].id, profileTarget(list[k], layout.centers), *targets[k]);
+        check("instrument count", double(list.size()), double(kTargets.size()));
+        for (size_t k = 0; k < list.size() && k < kTargets.size(); ++k) {
+            check("instrument id", list[k].id == kIds[k] ? 1 : 0, 1);
+            checkVec(list[k].id, profileTarget(list[k], layout.centers), *kTargets[k]);
+        }
+        check("style count", double(styles().size()), double(kStyled.size()));
+        for (size_t k = 0; k < styles().size() && k < kStyled.size(); ++k) {
+            check("style id", std::string(styles()[k].id) == kStyleIds[k] ? 1 : 0, 1);
+            checkVec(styles()[k].id, profileTarget(list[0], layout.centers, k), *kStyled[k]);
+        }
 
+        // 스타일(edm)을 적용한 보컬 프로파일로 보정량
         AutoEqOptions oi; oi.confidenceSeconds = 0; oi.instrumentMatch = 0.5;
         AutoEq eqi(layout.centers, oi);
-        eqi.setInstrument(profileTarget(list[0], layout.centers));
+        size_t edm = 0;
+        for (size_t k = 0; k < styles().size(); ++k) if (std::string(styles()[k].id) == "edm") edm = k;
+        eqi.setInstrument(profileTarget(list[0], layout.centers, edm));
         eqi.update(kInstInput, 0.05);
         checkVec("instrument correction", eqi.correction(), kInstCorrection);
 
-        const auto id = identifyInstrument(kKickish, layout.centers);
-        check("ident best", id.ranking[0].distance, kIdentBest, 1e-6);
-        check("ident second", id.ranking[1].distance, kIdentSecond, 1e-6);
-        check("ident id", std::string(list[size_t(id.ranking[0].index)].id) == kIdentFirstId ? 1 : 0, 1);
-        check("ident confident", id.confident == kIdentConfident ? 1 : 0, 1);
+        auto ident = [&](const char* name, const std::vector<double>& avg, bool confident, const char* applied, const char* category, double dist) {
+            const auto r = identifyInstrument(avg, layout.centers);
+            check((std::string(name) + " confident").c_str(), r.confident == confident ? 1 : 0, 1);
+            const std::string got = r.appliedIndex >= 0 ? list[size_t(r.appliedIndex)].id : "";
+            check((std::string(name) + " applied").c_str(), got == applied ? 1 : 0, 1);
+            check((std::string(name) + " category").c_str(), std::string(categoryName(r.categories[0].category)).substr(0, 1) == std::string(category).substr(0, 1) ? 1 : 0, 1);
+            check((std::string(name) + " distance").c_str(), r.categories[0].distance, dist, 1e-6);
+        };
+        ident("kick", kCase_kick, kCase_kick_confident, kCase_kick_applied, "Drums", kCase_kick_dist);
+        ident("kit", kCase_kit, kCase_kit_confident, kCase_kit_applied, "Drums", kCase_kit_dist);
+        ident("guitar", kCase_guitar, kCase_guitar_confident, kCase_guitar_applied, "Guitar", kCase_guitar_dist);
+        ident("flat", kCase_flat, kCase_flat_confident, kCase_flat_applied, "Drums", kCase_flat_dist);
     }
 
     // 무음은 학습하지 않는다

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AutoEq } from "./autoEq";
 import { makeBands } from "./bands";
-import { identifyInstrument, INSTRUMENTS, instrumentById, profileTarget } from "./instruments";
+import { identifyInstrument, INSTRUMENTS, instrumentById, profileTarget, STYLES } from "./instruments";
 import { rng } from "./testkit";
 
 const layout = makeBands();
@@ -10,7 +10,7 @@ const target = (id: Parameters<typeof instrumentById>[0]) => profileTarget(instr
 
 describe("profileTarget", () => {
   it("밴드마다 유한한 값을 내고, 핑크 노이즈 모양(옥타브 에너지 평탄)은 빈 영역에서 -3dB/oct다", () => {
-    const flat = { id: "vocal", name: "flat", anchors: [[20, 0], [20000, 0]] } as const;
+    const flat = { id: "vocal", name: "flat", category: "vocal", anchors: [[20, 0], [20000, 0]] } as const;
     const t = profileTarget(flat, centers);
     expect(t.every(Number.isFinite)).toBe(true);
     const i = 4;
@@ -18,10 +18,10 @@ describe("profileTarget", () => {
     expect(t[j]! - t[i]!).toBeCloseTo(-3.01, 1);
   });
 
-  it("모든 악기가 서로 다른 모양이다", () => {
+  it("서로 다른 묶음의 악기는 모양이 확실히 다르다", () => {
     for (const a of INSTRUMENTS)
       for (const b of INSTRUMENTS) {
-        if (a.id >= b.id) continue;
+        if (a.id >= b.id || a.category === b.category) continue;
         const ta = profileTarget(a, centers), tb = profileTarget(b, centers);
         const d = ta.map((v, i) => v - tb[i]!);
         const mean = d.reduce((s, v) => s + v, 0) / d.length;
@@ -43,13 +43,22 @@ describe("identifyInstrument", () => {
     }
   });
 
-  it("±1.5dB 안팎 잡음이 있어도 대부분 맞춘다", () => {
+  it("±1.5dB 안팎 잡음이 있어도 묶음을 대부분 맞춘다(같은 묶음 안의 헷갈림은 허용)", () => {
     let right = 0, total = 0;
     for (const p of INSTRUMENTS) for (let seed = 1; seed <= 20; seed++) {
       total++;
-      if (identifyInstrument(noisy(p.id, 1.5, seed), centers).ranking[0]!.id === p.id) right++;
+      if (identifyInstrument(noisy(p.id, 1.5, seed), centers).categories[0]!.category === p.category) right++;
     }
-    expect(right / total).toBeGreaterThan(0.8);
+    expect(right / total).toBeGreaterThan(0.85);
+  });
+
+  it("같은 묶음 안에서 비슷한 악기끼리 헷갈려도 묶음이 뚜렷하면 확신하고 가장 닮은 것을 적용한다", () => {
+    const r = identifyInstrument(noisy("aguitar", 0.3, 4), centers);
+    expect(r.confident).toBe(true);
+    expect(["guitar", "eguitar", "aguitar"]).toContain(r.applied);
+    const kit = identifyInstrument(noisy("drums", 0.3, 5), centers);
+    expect(kit.categories[0]!.category).toBe("drums");
+    expect(kit.applied).toBe("drums"); // 킷 버스는 킥이나 스네어 하나보다 킷 프로파일에 가장 닮는다
   });
 
   it("아무 악기와도 닮지 않은 평탄 스펙트럼은 확신하지 않는다", () => {
@@ -57,9 +66,10 @@ describe("identifyInstrument", () => {
     expect(identifyInstrument(flat, centers).confident).toBe(false);
   });
 
-  it("뚜렷하게 다른 악기(킥과 보컬)는 확신하고 구분한다", () => {
+  it("뚜렷하게 다른 악기(킥)는 확신하고 구분한다", () => {
     const r = identifyInstrument(noisy("kick", 1, 3), centers);
-    expect(r.ranking[0]!.id).toBe("kick");
+    expect(r.categories[0]!.category).toBe("drums");
+    expect(r.applied).toBe("kick");
     expect(r.confident).toBe(true);
   });
 });
@@ -117,5 +127,33 @@ describe("AutoEq 악기 프로파일", () => {
 
   it("길이가 다른 프로파일은 거부한다", () => {
     expect(() => new AutoEq(centers).setInstrument([0, 1])).toThrow();
+  });
+});
+
+describe("스타일(장르) 보정", () => {
+  it("none은 프로파일을 바꾸지 않고, 다른 스타일은 ±3dB 안에서만 옮긴다", () => {
+    const p = instrumentById("vocal");
+    const base = profileTarget(p, centers);
+    expect(profileTarget(p, centers, "none")).toEqual(base);
+    for (const st of STYLES) {
+      const t = profileTarget(p, centers, st.id);
+      const maxShift = Math.max(...t.map((v, i) => Math.abs(v - base[i]!)));
+      expect(maxShift, st.id).toBeLessThanOrEqual(3 + 1e-9);
+    }
+    expect(STYLES.filter((s) => s.id !== "none").every((s) => profileTarget(p, centers, s.id).some((v, i) => Math.abs(v - base[i]!) > 0.5))).toBe(true);
+  });
+
+  it("스타일을 고르면 AutoEq가 그 모양 쪽으로 넓은 불균형을 당긴다", () => {
+    const p = instrumentById("bass");
+    const input = profileTarget(p, centers).map((v) => v - 50); // 스타일 없는 베이스 그대로
+    const lowBand = centers.findIndex((f) => f > 70);
+    const run = (style: Parameters<typeof profileTarget>[2]) => {
+      const eq = new AutoEq(centers, { confidenceSeconds: 0, deadbandDb: 0, instrumentMatch: 1, maxCorrectionDb: 6 });
+      eq.setInstrument(profileTarget(p, centers, style));
+      eq.update(input, 0.05);
+      return eq.correction()[lowBand]!;
+    };
+    expect(Math.abs(run("none"))).toBeLessThan(0.2);
+    expect(run("hiphop")).toBeGreaterThan(0.3); // 힙합은 저역이 더 풍성한 쪽이라 부스트 방향
   });
 });

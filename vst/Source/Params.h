@@ -44,6 +44,9 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout() {
     juce::StringArray instNames{"Off", "Auto"};
     for (const auto& inst : aeq::instruments()) instNames.add(inst.name);
     layout.add(std::make_unique<juce::AudioParameterChoice>(P{"instrument", 1}, "Instrument", instNames, 1));
+    juce::StringArray styleNames;
+    for (const auto& st : aeq::styles()) styleNames.add(st.name);
+    layout.add(std::make_unique<juce::AudioParameterChoice>(P{"style", 1}, "Style", styleNames, 0));
     layout.add(std::make_unique<juce::AudioParameterFloat>(P{"inst_match", 1}, "Instrument Match", juce::NormalisableRange<float>(0.f, 1.f, 0.01f), 0.3f));
 
     for (int b = 0; b < kNumBands; ++b) {

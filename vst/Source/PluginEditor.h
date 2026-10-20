@@ -38,9 +38,9 @@ private:
     juce::ToggleButton bypass_{"Bypass"}, learn_{"LEARN"};
     Slider output_, amount_, maxDb_, smooth_, autoBands_, match_, liveSec_;
     juce::Label outputL_, amountL_, maxL_, smoothL_, autoBandsL_, matchL_, liveSecL_, status_;
-    juce::ComboBox instrument_, autoMode_;
+    juce::ComboBox instrument_, autoMode_, style_;
     SliderAttachment outputA_, amountA_, maxA_, smoothA_, autoBandsA_, matchA_, liveSecA_;
-    std::unique_ptr<ComboAttachment> instrumentA_, autoModeA_;  // 항목을 채운 뒤에 붙인다
+    std::unique_ptr<ComboAttachment> instrumentA_, autoModeA_, styleA_;  // 항목을 채운 뒤에 붙인다
     ButtonAttachment bypassA_, learnA_;
 
     // 선택한 밴드

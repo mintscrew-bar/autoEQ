@@ -3,7 +3,17 @@ import { fitBands, type AutoBandFit } from "./dsp/autoBands";
 import { DEFAULT_DYN, MAX_RANGE, dynamicTarget, smoothAmount, type DynSettings } from "./dsp/dynamics";
 import { AutoEq } from "./dsp/autoEq";
 import { makeBands } from "./dsp/bands";
-import { INSTRUMENTS, identifyInstrument, instrumentById, profileTarget, type InstrumentId } from "./dsp/instruments";
+import {
+  CATEGORY_NAMES,
+  INSTRUMENTS,
+  STYLES,
+  identifyInstrument,
+  instrumentById,
+  profileTarget,
+  type InstrumentCategory,
+  type InstrumentId,
+  type StyleId,
+} from "./dsp/instruments";
 import {
   FILTER_LABELS,
   defaultQ,
@@ -173,7 +183,14 @@ mountKnob("k-match", {
 
 // 악기: 고르거나 Auto(스펙트럼 모양으로 추정, 확신이 있을 때만 적용, 깜박임 방지로 같은 후보가 3초 이어져야 바꾼다)
 const instInfo = $("inst-info");
-for (const p of INSTRUMENTS) instrumentSel.add(new Option(p.name, p.id));
+for (const category of Object.keys(CATEGORY_NAMES) as InstrumentCategory[]) {
+  const group = document.createElement("optgroup");
+  group.label = CATEGORY_NAMES[category];
+  for (const p of INSTRUMENTS.filter((x) => x.category === category)) group.append(new Option(p.name, p.id));
+  instrumentSel.append(group);
+}
+const styleSel = $<HTMLSelectElement>("style");
+for (const st of STYLES) if (st.id !== "none") styleSel.add(new Option(st.name, st.id));
 let appliedInstrument: InstrumentId | null = null;
 let instCandidate: InstrumentId | null = null;
 let instCandidateSince = 0;
@@ -181,7 +198,7 @@ let instLastConfident = 0;
 
 function applyInstrument(id: InstrumentId | null): void {
   appliedInstrument = id;
-  eq.setInstrument(id ? profileTarget(instrumentById(id), layout.centers) : null);
+  eq.setInstrument(id ? profileTarget(instrumentById(id), layout.centers, styleSel.value as StyleId) : null);
   instInfo.textContent =
     instrumentSel.value === "auto" ? (id ? `Detected: ${instrumentById(id).name}` : "Detecting…") : "";
 }
@@ -197,7 +214,7 @@ function updateInstrument(now: number): void {
     if (appliedInstrument && now - instLastConfident > 8000) applyInstrument(null);
     return;
   }
-  const best = r.ranking[0]!.id;
+  const best = r.applied!;
   instLastConfident = now;
   if (best === appliedInstrument) {
     instCandidate = null;
@@ -210,6 +227,7 @@ function updateInstrument(now: number): void {
   }
 }
 
+styleSel.addEventListener("change", () => applyInstrument(appliedInstrument));
 instrumentSel.addEventListener("change", () => {
   instCandidate = null;
   syncMatch();

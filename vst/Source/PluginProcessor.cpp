@@ -35,6 +35,7 @@ AutoEQProcessor::AutoEQProcessor()
     autoGate_ = apvts.getRawParameterValue("auto_gate");
     instrument_ = apvts.getRawParameterValue("instrument");
     instMatch_ = apvts.getRawParameterValue("inst_match");
+    style_ = apvts.getRawParameterValue("style");
     for (int b = 0; b < kNumBands; ++b) {
         auto get = [&](const char* n) { return apvts.getRawParameterValue(bandId(b, n)); };
         bandParams_[size_t(b)] = {get("on"), get("type"), get("freq"), get("gain"), get("q"), get("dyn"), get("thr"), get("range"), get("att"), get("rel"), get("mode")};
@@ -125,6 +126,7 @@ void AutoEQProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     st.gateDb = double(autoGate_->load());
     st.instrument = int(instrument_->load());
     st.instrumentMatch = double(instMatch_->load());
+    st.style = int(style_->load());
     analyzer.setSettings(st);
     if (learning) {
         if (mono_.size() < size_t(numSamples)) mono_.resize(size_t(numSamples));
