@@ -1,11 +1,14 @@
 // 에디터를 화면 없이 그려 PNG로 저장한다(문서·확인용). 사용: editor_snapshot <출력.png> [옵션열기:0|1]
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "../Source/PluginEditor.h"
+#include <cstdio>
+#define STEP(x) do { std::fprintf(stderr, "[snap] %s\n", x); std::fflush(stderr); } while (0)
 
 int main(int argc, char** argv) {
     juce::ScopedJuceInitialiser_GUI gui;
     const juce::File out = juce::File::getCurrentWorkingDirectory().getChildFile(argc > 1 ? argv[1] : "editor.png");
 
+    STEP("processor");
     autoeq::AutoEQProcessor proc;
     proc.setPlayConfigDetails(2, 2, 48000.0, 512);
     proc.prepareToPlay(48000.0, 512);
@@ -24,10 +27,12 @@ int main(int argc, char** argv) {
     }
     set(autoeq::bandId(2, "dyn"), 1.f);
 
+    STEP("editor");
     std::unique_ptr<juce::AudioProcessorEditor> ed(proc.createEditor());
     if (argc > 2 && std::string(argv[2]) == "1")
         if (auto* e = dynamic_cast<autoeq::AutoEQEditor*>(ed.get())) e->showOptions(true);
 
+    STEP("audio");
     // 스펙트럼이 보이도록 분홍빛 잡음을 흘려 보낸다
     juce::Random rnd(7);
     juce::AudioBuffer<float> buf(2, 512);
@@ -42,9 +47,11 @@ int main(int argc, char** argv) {
             buf.setSample(0, i, v); buf.setSample(1, i, v);
         }
         proc.processBlock(buf, midi);
+        if (blk == 0) STEP("first block ok");
         mm->runDispatchLoopUntil(20);
     }
 
+    STEP("snapshot");
     const auto img = ed->createComponentSnapshot(ed->getLocalBounds(), true, 2.0f);
     out.deleteFile();
     juce::FileOutputStream os(out);

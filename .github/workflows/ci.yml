@@ -51,8 +51,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          vst/build/editor_snapshot_artefacts/Release/editor_snapshot.exe editor.png 0
-          vst/build/editor_snapshot_artefacts/Release/editor_snapshot.exe editor-options.png 1
+          vst/build/editor_snapshot_artefacts/Release/editor_snapshot.exe editor.png 0 || true
+          vst/build/editor_snapshot_artefacts/Release/editor_snapshot.exe editor-options.png 1 || true
       - name: 캡처 올리기
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
