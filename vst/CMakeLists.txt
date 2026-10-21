@@ -44,3 +44,13 @@ target_link_libraries(AutoEQ
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags)
+
+# 에디터를 PNG로 저장하는 도구(확인용). cmake -DAUTOEQ_SNAPSHOT=ON
+option(AUTOEQ_SNAPSHOT "Build editor_snapshot" OFF)
+if(AUTOEQ_SNAPSHOT)
+    juce_add_console_app(editor_snapshot PRODUCT_NAME "editor_snapshot")
+    target_sources(editor_snapshot PRIVATE
+        tools/snapshot.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/AutoAnalyzer.cpp)
+    target_compile_definitions(editor_snapshot PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_MODAL_LOOPS_PERMITTED=1)
+    target_link_libraries(editor_snapshot PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags)
+endif()

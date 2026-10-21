@@ -113,6 +113,7 @@ public:
 
     void paint(juce::Graphics&) override;
     void resized() override;
+    void showOptions(bool open) { setDrawer(open); }
 
 private:
     void timerCallback() override;
