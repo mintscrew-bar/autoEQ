@@ -647,6 +647,7 @@ void AutoEQEditor::refreshBar() {
 }
 
 void AutoEQEditor::layoutStrip() {
+    if (tabs_.size() < size_t(kNumBands)) return;  // 생성 중 setSize가 먼저 resized를 부른다
     int x = 14;
     int count = 0;
     for (int b = 0; b < kNumBands; ++b) {
