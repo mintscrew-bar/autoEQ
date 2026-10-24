@@ -598,11 +598,11 @@ AutoEQEditor::AutoEQEditor(AutoEQProcessor& p)
 
 AutoEQEditor::~AutoEQEditor() { setLookAndFeel(nullptr); }
 
-int AutoEQEditor::wantedHeight() const { return 34 + 330 + 44 + 124 + 78 + (drawer_ ? 112 : 0) + 26; }
+int AutoEQEditor::wantedHeight() const { return kTitle + kGraph + kStrip + kBar + kGap + kAuto + (drawer_ ? kDrawer : 0) + kGap + kFoot; }
 
 void AutoEQEditor::setDrawer(bool open) {
     drawer_ = open;
-    options_.setButtonText(open ? "Options  ▴" : "Options  ▾");
+    options_.setButtonText(open ? "Options  -" : "Options  +");
     for (juce::Component* c : std::initializer_list<juce::Component*>{&autoMode_, &instrument_, &style_, &match_, &liveSec_, &smooth_, &output_, &modeL_, &instL_, &styleL_})
         c->setVisible(open);
     setSize(getWidth(), wantedHeight());
@@ -654,10 +654,10 @@ void AutoEQEditor::layoutStrip() {
         const bool on = graph_.bandOn(b);
         auto& t = *tabs_[size_t(b)];
         t.setVisible(on);
-        if (on) { t.setBounds(x, 34 + 330 + 10, 108, 24); x += 112; ++count; }
+        if (on) { t.setBounds(x, kTitle + kGraph + 10, 108, 24); x += 112; ++count; }
     }
     add_.setVisible(count < kNumBands);
-    add_.setBounds(x, 34 + 330 + 10, 26, 24);
+    add_.setBounds(x, kTitle + kGraph + 10, 26, 24);
     clear_.setVisible(count > 0);
 }
 
@@ -680,42 +680,49 @@ void AutoEQEditor::timerCallback() {
     if (proc_.analyzer.isLearning()) {
         const int inst = proc_.analyzer.activeInstrument();
         const juce::String name = inst >= 0 ? juce::String(aeq::instruments()[size_t(inst)].name) : juce::String("whole mix");
-        info_.setText(juce::String(autoMode_.getSelectedId() == 2 ? "Live" : "Learning") + "  " + juce::String(int(proc_.analyzer.confidence() * 100)) + "%  ·  " + name, juce::dontSendNotification);
+        info_.setText(juce::String(autoMode_.getSelectedId() == 2 ? "Live" : "Learning") + "  " + juce::String(int(proc_.analyzer.confidence() * 100)) + "%  |  " + name, juce::dontSendNotification);
     } else {
-        info_.setText(learn_.getToggleState() ? "Starting…" : "Press LEARN, play a section, press again to lock", juce::dontSendNotification);
+        info_.setText(learn_.getToggleState() ? "Starting..." : "Press LEARN, play a section, press again to lock", juce::dontSendNotification);
     }
 }
 
 void AutoEQEditor::paint(juce::Graphics& g) {
     g.fillAll(pal::plugin);
     g.setColour(pal::line);
-    g.drawHorizontalLine(33, 0.f, float(getWidth()));
+    g.drawHorizontalLine(kTitle - 1, 0.f, float(getWidth()));
 
     g.setColour(pal::text);
     g.setFont(juce::Font(juce::FontOptions(12.f, juce::Font::bold)));
-    g.drawText("AUTO", 14, 0, 44, 34, juce::Justification::centredLeft, false);
+    g.drawText("AUTO", 14, 0, 44, kTitle, juce::Justification::centredLeft, false);
     g.setColour(pal::accent);
-    g.drawText("EQ", 14 + 38, 0, 30, 34, juce::Justification::centredLeft, false);
+    g.drawText("EQ", 14 + 38, 0, 30, kTitle, juce::Justification::centredLeft, false);
 
-    // 선택한 밴드 막대
-    const auto bar = juce::Rectangle<float>(14.f, float(34 + 330 + 44), float(getWidth()) - 28.f, 110.f);
-    g.setColour(pal::raised);
-    g.fillRoundedRectangle(bar, 8.f);
-    g.setColour(pal::line);
-    g.drawRoundedRectangle(bar.reduced(0.5f), 8.f, 1.f);
+    auto card = [&](juce::Rectangle<float> r) {
+        g.setColour(pal::raised);
+        g.fillRoundedRectangle(r, 8.f);
+        g.setColour(pal::line);
+        g.drawRoundedRectangle(r.reduced(0.5f), 8.f, 1.f);
+    };
+    const float cw = float(getWidth()) - 28.f;
+
+    // 선택한 밴드 카드
+    const auto bar = juce::Rectangle<float>(14.f, float(barTop()), cw, float(kBar));
+    card(bar);
     if (!barHasBand_) {
         g.setColour(pal::muted);
         g.setFont(juce::Font(juce::FontOptions(12.f)));
         g.drawText("No band selected. Press + or double-click the graph.", bar.toNearestInt(), juce::Justification::centred, false);
     } else {
+        const float cx = bar.getX() + 30.f, cy = bar.getY() + 24.f;
         g.setColour(pal::accent);
-        const float cx = bar.getX() + 28.f, cy = bar.getY() + 27.f;
         g.fillEllipse(cx - 11.f, cy - 11.f, 22.f, 22.f);
         g.setColour(pal::bg);
         g.setFont(juce::Font(juce::FontOptions(11.f, juce::Font::bold)));
         g.drawText(juce::String(graph_.selected + 1), juce::Rectangle<float>(cx - 11.f, cy - 11.f, 22.f, 22.f), juce::Justification::centred, false);
-        if (barDyn_) {  // 다이나믹 묶음 테두리
-            const auto box = juce::Rectangle<float>(bar.getX() + 430.f, bar.getY() + 12.f, bar.getWidth() - 444.f, bar.getHeight() - 24.f);
+        g.setColour(pal::line);
+        g.drawVerticalLine(int(bar.getX()) + kKnobX - 14, bar.getY() + 14.f, bar.getBottom() - 14.f);
+        if (barDyn_) {
+            const auto box = juce::Rectangle<float>(bar.getX() + float(kDynX), bar.getY() + 12.f, float(kDynW), bar.getHeight() - 22.f);
             g.setColour(pal::dyn.withAlpha(0.4f));
             g.drawRoundedRectangle(box, 8.f, 1.f);
             g.setColour(pal::raised);
@@ -726,54 +733,58 @@ void AutoEQEditor::paint(juce::Graphics& g) {
         }
     }
 
-    // 하단 안내
+    // 자동 학습 카드(옵션을 열면 아래로 늘어난다)
+    const auto autoCard = juce::Rectangle<float>(14.f, float(autoTop()), cw, float(kAuto + (drawer_ ? kDrawer : 0)));
+    card(autoCard);
+    if (drawer_) {
+        g.setColour(pal::line);
+        g.drawHorizontalLine(autoTop() + kAuto, autoCard.getX() + 14.f, autoCard.getRight() - 14.f);
+    }
+
     g.setColour(pal::line);
-    g.drawHorizontalLine(getHeight() - 26, 0.f, float(getWidth()));
+    g.drawHorizontalLine(getHeight() - kFoot, 0.f, float(getWidth()));
     g.setColour(pal::muted);
     g.setFont(juce::Font(juce::FontOptions(10.5f)));
-    g.drawText("Double-click: add / remove  ·  Drag: move  ·  Wheel: Q  ·  Right-click or Delete: remove  ·  Knobs: drag, double-click resets",
-               14, getHeight() - 26, getWidth() - 28, 26, juce::Justification::centredLeft, false);
+    g.drawText("Double-click: add / remove   |   Drag: move   |   Wheel: Q   |   Right-click or Delete: remove   |   Knobs: drag, double-click resets",
+               14, getHeight() - kFoot, getWidth() - 28, kFoot, juce::Justification::centredLeft, false);
 }
 
 void AutoEQEditor::resized() {
     const int W = getWidth();
     bypass_.setBounds(W - 14 - 84, 9, 84, 16);
-    int y = 34;
-    graph_.setBounds(0, y, W, 330);
-    y += 330;
-    clear_.setBounds(W - 14 - 74, y + 10, 74, 24);
+    graph_.setBounds(0, kTitle, W, kGraph);
+    clear_.setBounds(W - 14 - 74, kTitle + kGraph + 10, 74, 24);
     layoutStrip();
-    y += 44;
 
-    // 선택한 밴드 막대(내부 좌표)
-    const int bx = 14, by = y;
-    type_.setBounds(bx + 52, by + 14, 120, 26);
-    dyn_.setBounds(bx + 14, by + 56, 56, 22);
-    del_.setBounds(bx + 76, by + 56, 64, 22);
-    int kx = bx + 190;
-    for (auto* k : {&freq_, &gain_, &q_}) { k->setBounds(kx, by + 8, 78, 94); kx += 80; }
-    int dx = bx + 444;
-    for (auto* k : {&thr_, &range_, &att_, &rel_}) { k->setBounds(dx, by + 22, 62, 80); dx += 64; }
-    mode_.setBounds(dx + 6, by + 40, 90, 26);
-    y += 124;
+    // 밴드 카드
+    const int bx = 14, by = barTop();
+    type_.setBounds(bx + 54, by + 11, 128, 26);
+    dyn_.setBounds(bx + 14, by + 52, 56, 24);
+    del_.setBounds(bx + 76, by + 52, 62, 24);
+    int kx = bx + kKnobX;
+    for (auto* k : {&freq_, &gain_, &q_}) { k->setBounds(kx, by + 6, 74, 80); kx += 78; }
+    int dx = bx + kDynX + 14;
+    for (auto* k : {&thr_, &range_, &att_, &rel_}) { k->setBounds(dx, by + 14, 58, 70); dx += 60; }
+    mode_.setBounds(dx + 6, by + 30, 84, 26);
 
-    // LEARN 줄
-    learn_.setBounds(14, y + 20, 100, 30);
-    info_.setBounds(124, y + 20, 250, 30);
-    int ax = 380;
-    for (auto* k : {&amount_, &max_, &bands_}) { k->setBounds(ax, y + 2, 72, 72); ax += 76; }
-    options_.setBounds(W - 14 - 96, y + 22, 96, 26);
-    y += 78;
+    // 자동 학습 카드
+    const int ay = autoTop();
+    learn_.setBounds(14 + 14, ay + 24, 104, 30);
+    info_.setBounds(14 + 130, ay + 24, 270, 30);
+    int ax = 14 + 420;
+    for (auto* k : {&amount_, &max_, &bands_}) { k->setBounds(ax, ay + 4, 70, 70); ax += 74; }
+    options_.setBounds(W - 14 - 14 - 96, ay + 26, 96, 26);
 
     if (drawer_) {
-        modeL_.setBounds(14, y + 8, 80, 16);
-        autoMode_.setBounds(14, y + 26, 190, 26);
-        instL_.setBounds(14, y + 58, 80, 16);
-        instrument_.setBounds(14, y + 76, 190, 26);
-        styleL_.setBounds(214, y + 58, 80, 16);
-        style_.setBounds(214, y + 76, 150, 26);
-        int ox = 400;
-        for (auto* k : {&match_, &liveSec_, &smooth_, &output_}) { k->setBounds(ox, y + 12, 76, 90); ox += 84; }
+        const int dy = ay + kAuto;
+        modeL_.setBounds(14 + 14, dy + 8, 100, 16);
+        autoMode_.setBounds(14 + 14, dy + 26, 190, 26);
+        instL_.setBounds(14 + 14, dy + 56, 100, 16);
+        instrument_.setBounds(14 + 14, dy + 72 - 4, 190, 26);
+        styleL_.setBounds(14 + 214, dy + 56, 100, 16);
+        style_.setBounds(14 + 214, dy + 72 - 4, 150, 26);
+        int ox = 14 + 420;
+        for (auto* k : {&match_, &liveSec_, &smooth_, &output_}) { k->setBounds(ox, dy + 10, 70, 80); ox += 74; }
     }
 }
 

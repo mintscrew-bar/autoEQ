@@ -123,6 +123,12 @@ private:
     void setDrawer(bool open);
     int wantedHeight() const;
 
+    // 세로 배치(px)
+    static constexpr int kTitle = 34, kGraph = 320, kStrip = 44, kBar = 92, kGap = 10, kAuto = 78, kDrawer = 100, kFoot = 26;
+    static constexpr int kKnobX = 200, kDynX = 440, kDynW = 372;
+    int barTop() const { return kTitle + kGraph + kStrip; }
+    int autoTop() const { return barTop() + kBar + kGap; }
+
     using SliderAtt = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ButtonAtt = juce::AudioProcessorValueTreeState::ButtonAttachment;
     using ComboAtt = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
