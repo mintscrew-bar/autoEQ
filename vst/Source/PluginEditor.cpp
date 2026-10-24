@@ -777,13 +777,13 @@ void AutoEQEditor::resized() {
 
     if (drawer_) {
         const int dy = ay + kAuto;
-        modeL_.setBounds(14 + 14, dy + 8, 100, 16);
-        autoMode_.setBounds(14 + 14, dy + 26, 190, 26);
-        instL_.setBounds(14 + 14, dy + 56, 100, 16);
-        instrument_.setBounds(14 + 14, dy + 72 - 4, 190, 26);
-        styleL_.setBounds(14 + 214, dy + 56, 100, 16);
-        style_.setBounds(14 + 214, dy + 72 - 4, 150, 26);
-        int ox = 14 + 420;
+        modeL_.setBounds(14 + 14, dy + 22, 170, 16);
+        autoMode_.setBounds(14 + 14, dy + 42, 170, 26);
+        instL_.setBounds(14 + 194, dy + 22, 170, 16);
+        instrument_.setBounds(14 + 194, dy + 42, 170, 26);
+        styleL_.setBounds(14 + 374, dy + 22, 120, 16);
+        style_.setBounds(14 + 374, dy + 42, 120, 26);
+        int ox = 14 + 520;
         for (auto* k : {&match_, &liveSec_, &smooth_, &output_}) { k->setBounds(ox, dy + 10, 70, 80); ox += 74; }
     }
 }
