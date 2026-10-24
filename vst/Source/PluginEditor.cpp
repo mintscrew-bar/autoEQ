@@ -364,7 +364,7 @@ void EqGraph::paint(juce::Graphics& g) {
 
     // 스펙트럼(입력)
     if (haveSpec_) {
-        constexpr float kFloor = -100.f, kSpan = 72.f;
+        constexpr float kFloor = -90.f, kSpan = 70.f;
         juce::Path line;
         for (int i = 0; i < kPoints; ++i) {
             const double f = kMinHz * std::pow(kMaxHz / kMinHz, double(i) / (kPoints - 1));
@@ -624,7 +624,7 @@ void AutoEQEditor::selectBand(int band) {
     range_.bind(s, bandId(band, "range"));
     att_.bind(s, bandId(band, "att"));
     rel_.bind(s, bandId(band, "rel"));
-    barHasBand_ = !barHasBand_;  // 강제로 다시 계산하게 한다
+    barHasBand_ = !graph_.bandOn(band);  // 보이기 상태를 반드시 다시 계산하게 한다
     refreshBar();
     repaint();
 }

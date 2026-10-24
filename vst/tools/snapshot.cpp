@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
         for (int i = 0; i < 512; ++i) {
             const float w = rnd.nextFloat() * 2.f - 1.f;
             b0 = 0.99765f * b0 + w * 0.0990460f; b1 = 0.96300f * b1 + w * 0.2965164f; b2 = 0.57000f * b2 + w * 1.0526913f;
-            const float v = 0.12f * (b0 + b1 + b2 + w * 0.1848f);
+            const float v = 0.03f * (b0 + b1 + b2 + w * 0.1848f);
             buf.setSample(0, i, v); buf.setSample(1, i, v);
         }
         proc.processBlock(buf, midi);

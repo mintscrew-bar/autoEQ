@@ -32,6 +32,7 @@ target_sources(AutoEQ PRIVATE
     Source/PluginEditor.cpp
     Source/AutoAnalyzer.cpp)
 
+target_compile_options(AutoEQ PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
 target_compile_definitions(AutoEQ PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
@@ -51,6 +52,7 @@ if(AUTOEQ_SNAPSHOT)
     juce_add_console_app(editor_snapshot PRODUCT_NAME "editor_snapshot")
     target_sources(editor_snapshot PRIVATE
         tools/snapshot.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/AutoAnalyzer.cpp)
+    target_compile_options(editor_snapshot PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
     target_compile_definitions(editor_snapshot PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_MODAL_LOOPS_PERMITTED=1)
     target_link_libraries(editor_snapshot PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags)
 endif()
